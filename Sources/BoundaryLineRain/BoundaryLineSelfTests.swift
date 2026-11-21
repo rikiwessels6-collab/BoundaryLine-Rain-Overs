@@ -256,6 +256,20 @@ enum BoundaryLineSelfTests {
         r.equal("Flow WBBL 2nd inns: 17 min lost with 10 min credit -> 17 overs; preview matches",
                 [ms.secondInningsLive.revisedOvers, p2?.revisedOvers ?? -1], [17, 17])
 
+        // Entered after coming off: stopped 20:45, restart 21:05 (same result as stop/resume buttons).
+        let w = MatchState(); w.startMatch(.wbbl)
+        w.gameStartTime = day(19, 40); w.recordFirstBall(at: day(19, 40))
+        let pv = w.previewOvers(stoppedAt: day(20), resumingAt: day(20, 20))
+        r.check("Flow: record stoppage 20:00-20:20 after the event", w.recordStoppage(from: day(20), to: day(20, 20)) == nil)
+        r.equal("Flow: after-the-event entry -> 18 overs a side; preview matched", [w.firstInningsPlan.oversPerTeam, pv ?? -1], [18, 18])
+        let rows = w.restartDeadlines(stoppedAt: day(20, 45))
+        let consistent = !rows.isEmpty && rows.allSatisfy { row in
+            w.previewOvers(stoppedAt: day(20, 45), resumingAt: row.latest) == row.overs &&
+            (w.previewOvers(stoppedAt: day(20, 45), resumingAt: TU.addMin(row.latest, 1)) ?? 0) < row.overs }
+        r.check("Flow: start-by table gives the latest restart for each overs figure", consistent,
+                rows.map { "\($0.overs)@\(TU.shortTime($0.latest))" }.joined(separator: " "))
+        r.check("Flow: overlapping after-the-event stoppage rejected", w.recordStoppage(from: day(20, 10), to: day(20, 30)) != nil)
+
         ms.saveCurrentMatch()
         ms.matchPhase = .before
         if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {

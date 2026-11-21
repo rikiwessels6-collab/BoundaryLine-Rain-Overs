@@ -83,12 +83,48 @@ extension MatchState {
         return nil
     }
 
+    /// Records a stoppage entered after coming off: stopped at `start`, play restarted at `end`.
+    @discardableResult
+    func recordStoppage(from start: Date, to end: Date) -> String? {
+        let previous = openStoppageStart
+        openStoppageStart = nil
+        if let message = stopPlay(at: start) { openStoppageStart = previous; return message }
+        if let message = resumePlay(at: end) { openStoppageStart = previous; return message }
+        return nil
+    }
+
+    /// Overs per side (1st innings) or revised overs (2nd innings) for a restart at `time`.
+    func previewOvers(stoppedAt start: Date, resumingAt time: Date) -> Int? {
+        if matchPhase == .second { return secondInningsPreview(stoppedAt: start, resumingAt: time)?.revisedOvers }
+        return firstInningsPreview(stoppedAt: start, resumingAt: time)?.oversPerTeam
+    }
+
+    /// The latest restart time that still gives each number of overs, highest overs first.
+    /// Scans minute by minute from the stop time (up to `horizon` minutes) using the same previews.
+    func restartDeadlines(stoppedAt start: Date, horizon: Int = 300, limit: Int = 6) -> [(overs: Int, latest: Date)] {
+        var latest: [Int: Date] = [:]
+        var order: [Int] = []
+        for m in 1...horizon {
+            let t = TU.addMin(start, m)
+            guard let o = previewOvers(stoppedAt: start, resumingAt: t), o > 0 else { break }
+            if latest[o] == nil { order.append(o) }
+            latest[o] = t
+        }
+        return order.prefix(limit).compactMap { o in latest[o].map { (o, $0) } }
+    }
+
     /// Discards an open stoppage without recording it (tapped by mistake).
     func cancelOpenStoppage() { openStoppageStart = nil }
 
     /// What the first innings would look like if play resumed at `time` (nothing is saved).
     func firstInningsPreview(resumingAt time: Date) -> EqualOversPlan? {
-        guard let start = openStoppageStart, time > start, matchPhase != .second else { return nil }
+        guard let start = openStoppageStart else { return nil }
+        return firstInningsPreview(stoppedAt: start, resumingAt: time)
+    }
+
+    /// Pure preview for a stoppage entered after the event: stopped at `start`, restarting at `time`.
+    func firstInningsPreview(stoppedAt start: Date, resumingAt time: Date) -> EqualOversPlan? {
+        guard time > start, matchPhase != .second else { return nil }
         let thisStoppage = TU.minBetween(start, time)
         let played = max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)
         let lost = max(0, TU.minBetween(gameStartTime, LS_actualStart)) + C_playingTimeLost + thisStoppage
@@ -141,7 +177,12 @@ extension MatchState {
 
     /// What the second innings would look like if play resumed at `time` (nothing is saved).
     func secondInningsPreview(resumingAt time: Date) -> SecondInningsWorksheet? {
-        guard matchPhase == .second, let start = openStoppageStart, time > start else { return nil }
+        guard let start = openStoppageStart else { return nil }
+        return secondInningsPreview(stoppedAt: start, resumingAt: time)
+    }
+
+    func secondInningsPreview(stoppedAt start: Date, resumingAt time: Date) -> SecondInningsWorksheet? {
+        guard matchPhase == .second, time > start else { return nil }
         return secondWorksheet(with: secondInningsDelays + [InningsDelay(start: start, end: time, allowanceMinutes: 0)])
     }
 

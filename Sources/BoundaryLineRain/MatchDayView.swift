@@ -281,61 +281,98 @@ struct BeforePlayPanel: View {
     }
 }
 
-// MARK: - Stoppage control (shared by both innings)
+// MARK: - Stoppage calculator (shared by both innings)
+// Used after the umpires come off: enter when play stopped and a proposed restart, read the overs,
+// and record the stoppage once play actually restarts.
 
 struct StoppageControl: View {
     @EnvironmentObject var ms: MatchState
+    @State private var stoppedAt = StoppageControl.nowToMinute()
+    @State private var restartAt = TU.addMin(StoppageControl.nowToMinute(), 30)
     @State private var message: String?
+    @State private var recorded = false
+
+    static func nowToMinute() -> Date {
+        Calendar.current.dateInterval(of: .minute, for: Date())?.start ?? Date()
+    }
+    /// A restart clock time earlier than the stop time is the next day (after midnight).
+    private var restart: Date { restartAt <= stoppedAt ? TU.addMin(restartAt, 24 * 60) : restartAt }
+    private var minutesOff: Int { TU.minBetween(stoppedAt, restart) }
 
     var body: some View {
-        VStack(spacing: 10) {
-            if let start = ms.openStoppageStart {
-                TimelineView(.periodic(from: .now, by: 15)) { ctx in
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label("PLAY STOPPED", systemImage: "cloud.rain.fill")
-                                .font(.caption.weight(.heavy)).tracking(1.2)
-                                .foregroundStyle(Board.rain)
-                            Spacer()
-                            Text("\(TU.minBetween(start, ctx.date)) min so far")
-                                .font(.headline.monospacedDigit()).foregroundStyle(Board.text)
-                        }
-                        BoardTimeRow(label: "Stopped at", time: Binding(
-                            get: { ms.openStoppageStart ?? start },
-                            set: { ms.openStoppageStart = $0 }))
-                        previewLine(at: ctx.date)
-                    }
-                    .padding(16)
-                    .background(Board.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Board.rain.opacity(0.6), lineWidth: 2))
+        VStack(spacing: 12) {
+            BoardSection(title: "Rain stoppage") {
+                BoardTimeRow(label: "Play stopped at", time: $stoppedAt)
+                BoardTimeRow(label: "Restart at", time: $restartAt)
+                HStack {
+                    Text("Time off").foregroundStyle(Board.dim)
+                    Spacer()
+                    Text("\(minutesOff) min").font(.headline.monospacedDigit()).foregroundStyle(Board.rain)
                 }
-                BigActionButton(title: "Play resumed now", systemImage: "play.fill", color: Board.pitch,
-                                foreground: Board.bg) {
-                    message = ms.resumePlay(at: Date())
-                    if message == nil { Haptic.success() } else { Haptic.warning() }
-                }
-                Button("Stopped by mistake: cancel") { ms.cancelOpenStoppage() }
-                    .font(.callout.weight(.semibold)).foregroundStyle(Board.dim)
-            } else {
-                BigActionButton(title: "Play stopped now", systemImage: "cloud.rain.fill", color: Board.stop) {
-                    message = ms.stopPlay(at: Date())
-                    if message == nil { Haptic.medium() } else { Haptic.warning() }
-                }
+                result
+            }
+            startByTable
+            BigActionButton(title: "Record stoppage (play restarted)", systemImage: "checkmark.circle.fill",
+                            color: Board.pitch, foreground: Board.bg) {
+                message = ms.recordStoppage(from: stoppedAt, to: restart)
+                if message == nil {
+                    Haptic.success(); recorded = true
+                    stoppedAt = StoppageControl.nowToMinute()
+                    restartAt = TU.addMin(stoppedAt, 30)
+                } else { Haptic.warning() }
             }
             if let message {
                 Text(message).font(.callout.weight(.semibold)).foregroundStyle(Board.stop)
+            } else if recorded {
+                Text("Stoppage recorded. The board above shows the revised match.")
+                    .font(.callout).foregroundStyle(Board.pitch)
             }
+        }
+        .onAppear {
+            // A stoppage started with the earlier live button is carried into the form.
+            if let open = ms.openStoppageStart { stoppedAt = open; ms.cancelOpenStoppage() }
+        }
+        .onChange(of: stoppedAt) { _, _ in recorded = false; message = nil }
+        .onChange(of: restartAt) { _, _ in recorded = false; message = nil }
+    }
+
+    @ViewBuilder private var result: some View {
+        if ms.matchPhase == .second, let w = ms.secondInningsPreview(stoppedAt: stoppedAt, resumingAt: restart) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Restart at \(TU.shortTime(restart)):").font(.subheadline).foregroundStyle(Board.dim)
+                Text("\(w.revisedOvers) overs in this innings").font(.system(.title, design: .rounded).weight(.heavy))
+                    .foregroundStyle(Board.gold)
+                Text("\(w.oversLost) overs lost · innings ends \(TU.shortTime(w.revisedCessation))")
+                    .font(.headline).foregroundStyle(Board.text)
+            }
+        } else if let p = ms.firstInningsPreview(stoppedAt: stoppedAt, resumingAt: restart) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Restart at \(TU.shortTime(restart)):").font(.subheadline).foregroundStyle(Board.dim)
+                Text("\(p.oversPerTeam) overs a side").font(.system(.title, design: .rounded).weight(.heavy))
+                    .foregroundStyle(Board.gold)
+                Text("1st innings ends \(TU.shortTime(p.firstCessation)) · break \(TU.minBetween(p.firstCessation, p.secondStart)) min · match ends \(TU.shortTime(p.secondCessation))")
+                    .font(.headline).foregroundStyle(Board.text)
+            }
+        } else {
+            Text("Restart must be after play stopped.").font(.callout).foregroundStyle(Board.stop)
         }
     }
 
-    @ViewBuilder private func previewLine(at now: Date) -> some View {
-        if ms.matchPhase == .second, let w = ms.secondInningsPreview(resumingAt: now) {
-            Text("If play restarts now: **\(w.revisedOvers) overs**, ends \(TU.shortTime(w.revisedCessation))")
-                .font(.title3).foregroundStyle(Board.text)
-        } else if let p = ms.firstInningsPreview(resumingAt: now) {
-            Text("If play restarts now: **\(p.oversPerTeam) overs a side**, match ends \(TU.shortTime(p.secondCessation))")
-                .font(.title3).foregroundStyle(Board.text)
+    @ViewBuilder private var startByTable: some View {
+        let rows = ms.restartDeadlines(stoppedAt: stoppedAt)
+        if !rows.isEmpty {
+            BoardSection(title: ms.matchPhase == .second ? "Start by (overs this innings)" : "Start by (overs a side)") {
+                ForEach(rows, id: \.overs) { row in
+                    HStack {
+                        Text("\(row.overs) overs").font(.headline.monospacedDigit()).foregroundStyle(Board.text)
+                        Spacer()
+                        Text("restart by \(TU.shortTime(row.latest))")
+                            .font(.headline.monospacedDigit()).foregroundStyle(Board.gold)
+                    }
+                }
+                Text("Latest restart that still gives that many overs, from a stop at \(TU.shortTime(stoppedAt)).")
+                    .font(.footnote).foregroundStyle(Board.dim)
+            }
         }
     }
 }
@@ -461,12 +498,10 @@ struct FirstInningsPanel: View {
                     : nil)
             StoppageControl()
             StoppageListSection(second: false)
-            if ms.openStoppageStart == nil {
-                BigActionButton(title: "1st innings complete", systemImage: "flag.checkered",
-                                color: Board.panelHi) {
-                    ms.matchPhase = .second
-                    Haptic.light()
-                }
+            BigActionButton(title: "1st innings complete", systemImage: "flag.checkered",
+                            color: Board.panelHi) {
+                ms.matchPhase = .second
+                Haptic.light()
             }
             RulesFooter(overs: plan.oversPerTeam)
         }

@@ -1,0 +1,45 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Pick an iPad simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPad" | head -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          echo "Using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Build and run self-tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project BoundaryLineRain.xcodeproj \
+            -scheme BoundaryLineRain \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log
+      - name: Summary (errors and self-test result)
+        if: always()
+        run: |
+          {
+            echo "### Build / self-test result"
+            echo '```'
+            grep -E "error:|SELFTESTS|XCTAssert|failed|Test Suite .* (passed|failed)|BUILD|TEST " build.log | head -80 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload full log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log

@@ -579,6 +579,14 @@ enum EqualOversCalculator {
 
 // MARK: - Logged second-innings interruptions
 
+/// Where the match is, for the simplified match-day screens.
+enum MatchPhase: String, Codable, CaseIterable {
+    case before = "Before play"
+    case first  = "1st innings"
+    case second = "2nd innings"
+    case summary = "Summary"
+}
+
 struct InningsDelay: Identifiable, Codable {
     var id = UUID()
     var start: Date
@@ -666,6 +674,10 @@ struct Snapshot: Identifiable, Codable {
     var rescheduledCessation: Date?
     // ICC ODI/T20I agreed extra time; optional so older snapshots still decode.
     var savedAgreedExtraTime: Int?
+    // Match-day flow state; optional so older snapshots still decode.
+    var savedPhase: String?
+    var savedOpenStoppage: Date?
+    var savedSecondStarted: Bool?
 }
 
 // MARK: - Persistence
@@ -735,6 +747,22 @@ final class MatchState: ObservableObject {
         }
     }
     @Published var currentSavedMatchID: UUID? = nil
+    /// Match-day flow: which stage the umpire is on.
+    @Published var matchPhase: MatchPhase = .before {
+        didSet { Store.saveString(matchPhase.rawValue, key: "blMatchPhase") }
+    }
+    /// A stoppage that has been started with "Play stopped" but not yet ended.
+    /// Persisted so a force-quit during rain does not lose the off-field time.
+    @Published var openStoppageStart: Date? = nil {
+        didSet {
+            if let openStoppageStart { Store.saveDate(openStoppageStart, key: "blOpenStoppage") }
+            else { Store.defaults.removeObject(forKey: "blOpenStoppage") }
+        }
+    }
+    /// True once the first ball of the second innings has been recorded in the match-day flow.
+    @Published var secondInningsStarted: Bool = false {
+        didSet { Store.saveBool(secondInningsStarted, key: "blSecondStarted") }
+    }
     
     func startMatch(_ comp: Competition) {
         // Always initialise a fresh match, including when the competition is unchanged.
@@ -927,12 +955,15 @@ final class MatchState: ObservableObject {
         firstInningsDelays = Store.load([InningsDelay].self, key: "blFirstInningsDelays") ?? []
         timelineEvents = Store.load([MatchTimelineEvent].self, key: "blTimelineEvents") ?? []
         confirmedCessation = Store.loadDate(key: "blConfirmedCessation")
+        matchPhase = MatchPhase(rawValue: Store.loadString(key: "blMatchPhase", default: "Before play")) ?? .before
+        openStoppageStart = Store.loadDate(key: "blOpenStoppage")
+        secondInningsStarted = Store.loadBool(key: "blSecondStarted")
         let compRaw = Store.loadString(key: "competition", default: "ODC")
         competition = Competition(rawValue: compRaw) ?? .odc
         agreedExtraTime = Store.loadInt(key: "agreedExtraTime", default: 0)
         refreshRules()
         
-        let themeRaw = Store.loadString(key: "theme", default: "Auto")
+        let themeRaw = Store.loadString(key: "theme", default: "Dark")
         themePreference = ThemePreference(rawValue: themeRaw) ?? .system
         
         isFinal = Store.loadBool(key: "isFinal")
@@ -1015,6 +1046,9 @@ final class MatchState: ObservableObject {
         secondInningsDelays = []
         secondInningsCompletedOvers = 0
         secondInningsCompletedBalls = 0
+        matchPhase = .before
+        openStoppageStart = nil
+        secondInningsStarted = false
         Haptic.medium()
     }
     
@@ -1110,7 +1144,10 @@ final class MatchState: ObservableObject {
             secondInningsCompletedBalls: secondInningsCompletedBalls,
             rescheduledCessationEnabled: rescheduledCessationEnabled,
             rescheduledCessation: rescheduledCessation,
-            savedAgreedExtraTime: competition.isInternational ? agreedExtraTime : nil
+            savedAgreedExtraTime: competition.isInternational ? agreedExtraTime : nil,
+            savedPhase: matchPhase.rawValue,
+            savedOpenStoppage: openStoppageStart,
+            savedSecondStarted: secondInningsStarted
         )
         return s
     }
@@ -1220,6 +1257,11 @@ final class MatchState: ObservableObject {
         }
         timelineEvents = restoredEvents
         confirmedCessation = s.savedConfirmedCessation
+        // Older snapshots have no flow state: infer a sensible stage from the records.
+        secondInningsStarted = s.savedSecondStarted ?? !restoredSecond.isEmpty
+        openStoppageStart = s.savedOpenStoppage
+        matchPhase = s.savedPhase.flatMap(MatchPhase.init(rawValue:))
+            ?? (secondInningsStarted ? .second : (restoredFirst.isEmpty ? .before : .first))
         matchIsActive = true
         currentSavedMatchID = s.id
         undoFirstInningsDelays = nil
@@ -4523,45 +4565,19 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            AppTheme.bg.ignoresSafeArea()
+            (ms.matchIsActive ? Board.bg : AppTheme.bg).ignoresSafeArea()
             if !ms.matchIsActive {
                 CompetitionLandingView().environmentObject(ms)
             } else {
                 VStack(spacing: 10) {
                     BrandHeader(selectedComp: $selectedComp)
                         .environmentObject(ms).padding(.top, 8)
-                    if ms.competition == .bbl {
-                        Label("BBL|16: 12.8.2.6 one-over allowance (reduced matches) is not added to the cut-off shown. Interval reduction: see PC 11.3.3 wording (\"after 21 minutes\").",
-                              systemImage: "info.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.info)
-                            .padding(.horizontal, 16)
-                    }
-                    if ms.competition.isInternational {
-                        Label("ICC Men's Playing Conditions (Oct 2026). Unverified build. DLS targets and over-rate penalties are not calculated.",
-                              systemImage: "info.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.info)
-                            .padding(.horizontal, 16)
-                    }
-                    TabBar(selection: $selectedTab, competition: ms.competition)
-                    Group {
-                        switch selectedTab {
-                        case .lateStart:
-                            LateStartODCView()
-                        case .firstInns: FirstInningsView()
-                        case .termination: TerminationCheckView()
-                        case .secondStart: SecondInningsStartView()
-                        case .secondInter: SecondInningsInterruptionView()
-                        case .powerplays: PowerplayHelperView()
-                        case .breaks: BreaksAndDelaysView()
-                        case .summary: LiveMatchSummaryView()
-                        }
-                    }.environmentObject(ms)
+                    MatchDayView().environmentObject(ms)
                 }
             }
         }
-        .preferredColorScheme(ms.themePreference.colorScheme)
+        // Match day always uses the dark scoreboard look; the home screen follows the theme setting.
+        .preferredColorScheme(ms.matchIsActive ? .dark : ms.themePreference.colorScheme)
         .onAppear { selectedComp = ms.competition }
         .onChange(of: ms.matchIsActive) { _, active in
             if active { selectedTab = .firstInns; selectedComp = ms.competition }

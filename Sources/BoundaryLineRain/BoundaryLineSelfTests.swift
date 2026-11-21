@@ -70,6 +70,7 @@ enum BoundaryLineSelfTests {
         firstInnings(r)
         secondInnings(r)
         bbl(r)
+        flow(r)
         icc(r)                                   // before persistence: that group deliberately corrupts stored data
         persistence(r, suite: suite, temp: temp)
         return r.results
@@ -215,6 +216,55 @@ enum BoundaryLineSelfTests {
         r.check("S7 ODC credit larger than stoppage is capped: allowance 40, revised 40", x.allowance == 40 && x.revised == 40, "got \(x)")
         x = overs(n, start: day(14), stopS: day(15), stopE: day(16, 20), initial: 40, used: 0, credit: 30)
         r.check("S8 WNCL 80-min stoppage, 60 pool + 30 credit: allowance 80, revised 40", x.allowance == 80 && x.revised == 40, "got \(x)")
+    }
+
+    // MARK: 8. Match-day flow (one-tap first ball / play stopped / play resumed)
+    // These record events into the same fields the Appendix J sheets use; the checks confirm the
+    // "if play restarts now" preview equals the result after the restart is recorded.
+    private static func flow(_ r: Recorder) {
+        let ms = MatchState(); ms.startMatch(.wbbl)
+        ms.gameStartTime = day(19, 40)
+        r.check("Flow: cannot stop play before the first ball", ms.stopPlay(at: day(19, 50)) != nil)
+        ms.recordFirstBall(at: day(19, 40))
+        r.equal("Flow: first ball moves to 1st innings, on time", [ms.matchPhase == .first ? 1 : 0, TU.minBetween(ms.gameStartTime, ms.LS_actualStart)], [1, 0])
+        r.check("Flow: play stopped at 20:00 accepted", ms.stopPlay(at: day(20)) == nil)
+        let relaunch = MatchState()
+        r.equal("Flow: open stoppage and phase survive a relaunch",
+                [relaunch.openStoppageStart == day(20) ? 1 : 0, relaunch.matchPhase == .first ? 1 : 0], [1, 1])
+        let preview = ms.firstInningsPreview(resumingAt: day(20, 20))
+        r.check("Flow: resume before the stop time is rejected", ms.resumePlay(at: day(19, 59)) != nil)
+        r.check("Flow: play resumed at 20:20 accepted", ms.resumePlay(at: day(20, 20)) == nil)
+        // WBBL, 20 min lost: interval 15 -> 10 (credit 5), 150 - 15 = 135, 135 / 3.75 = 36 -> 18 a side.
+        r.equal("Flow WBBL: 20 min stoppage -> 18 overs a side, 10 min break",
+                [ms.firstInningsPlan.oversPerTeam, ms.M_intervalLength], [18, 10])
+        r.equal("Flow: preview before restart equals the recorded result (overs, match end)",
+                [preview?.oversPerTeam ?? -1, preview.map { TU.signedMinBetween($0.secondCessation, ms.firstInningsPlan.secondCessation) } ?? -1],
+                [18, 0])
+        r.equal("Flow: stoppage logged once, no open stoppage left",
+                [ms.firstInningsDelays.count, ms.openStoppageStart == nil ? 1 : 0, ms.C_playingTimeLost], [1, 1, 20])
+
+        // Second innings starting 10 min before schedule: 10 min credited (App. J 1.4 F).
+        let scheduled = ms.firstInningsPlan.secondStart
+        ms.beginSecondInnings(at: TU.addMin(scheduled, -10), overs: 18)
+        r.equal("Flow: 2nd innings 10 min early -> 10 min credit, 18 overs",
+                [ms.F3_additionalTimeAvail, ms.secondInningsLive.revisedOvers], [10, 18])
+        let s2 = TU.addMin(scheduled, 30)
+        r.check("Flow: 2nd innings stoppage accepted", ms.stopPlay(at: s2) == nil)
+        let p2 = ms.secondInningsPreview(resumingAt: TU.addMin(s2, 17))
+        _ = ms.resumePlay(at: TU.addMin(s2, 17))
+        // 17 lost - 10 credit = 7; floor(7 / 3.75) = 1 over lost -> 17.
+        r.equal("Flow WBBL 2nd inns: 17 min lost with 10 min credit -> 17 overs; preview matches",
+                [ms.secondInningsLive.revisedOvers, p2?.revisedOvers ?? -1], [17, 17])
+
+        ms.saveCurrentMatch()
+        ms.matchPhase = .before
+        if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {
+            _ = ms.restoreSnapshot(saved)
+            r.equal("Flow: a saved match restores to the 2nd innings", [ms.matchPhase == .second ? 1 : 0, ms.secondInningsStarted ? 1 : 0], [1, 1])
+        } else { r.check("Flow: saved match found", false) }
+        ms.startMatch(.odc)
+        r.equal("Flow: new match starts before play with nothing open",
+                [ms.matchPhase == .before ? 1 : 0, ms.openStoppageStart == nil ? 1 : 0, ms.secondInningsStarted ? 1 : 0], [1, 1, 0])
     }
 
     // MARK: 7. BBL|16 (Playing Conditions dated 1 December 2026)

@@ -376,6 +376,7 @@ enum BoundaryLineSelfTests {
 
         // 5d. Saved matches: kept, reloaded, and restored across midnight.
         let s = MatchState(); s.startMatch(.bbl)
+        s.snapshots = []                                        // isolate from matches saved by earlier test groups
         s.gameStartTime = day(19); s.LS_actualStart = day(19)
         s.J_startOrRecommence = day(0, 20, plus: 1)             // 00:20 the next day
         s.saveCurrentMatch()

@@ -113,6 +113,59 @@ extension MatchState {
         return order.prefix(limit).compactMap { o in latest[o].map { (o, $0) } }
     }
 
+    // MARK: Pure "what if" for a set of first-innings stoppages (used when correcting one)
+
+    /// The first-innings plan if the recorded stoppages were `delays` (same steps as
+    /// rebuildFirstInningsFromLogs + firstInningsLoss + firstInningsPlan; nothing is saved).
+    func firstInningsPlan(for delays: [InningsDelay]) -> EqualOversPlan? {
+        let ordered = delays.sorted { $0.start < $1.start }
+        guard let last = ordered.last, ordered.allSatisfy({ $0.end > $0.start }) else { return nil }
+        let lostInLog = ordered.reduce(0) { $0 + $1.duration }
+        let earlier = ordered.dropLast().reduce(0) { $0 + $1.duration }
+        let played = max(0, TU.minBetween(LS_actualStart, last.start) - earlier)
+        let late = max(0, TU.minBetween(gameStartTime, LS_actualStart))
+        let lost = late + lostInLog
+        let interval = rules.adjustedInterval(timeLost: lost)
+        let credit = max(0, rules.defaultIntervalMinutes - interval)
+        let effective = max(0, lost - min(lost, rules.extraTimeMinutes) - credit)
+        let raw = Double(max(0, A_netPlayingTime - effective)) / rules.minutesPerOver
+        let total = competition.isT20 ? TU.round2(raw) : raw
+        return EqualOversCalculator.plan(
+            rules: rules, originalStart: gameStartTime, restart: last.end, playedMinutes: played,
+            initialOvers: TU.ceilOv(total / 2.0), interval: interval,
+            rescheduledCessation: rescheduledCessationEnabled ? rescheduledCessation : nil)
+    }
+
+    /// Overs for the current innings if stoppage `id` (nil = a new one) ran from `start` to `end`.
+    func overs(replacing id: UUID?, start: Date, end: Date) -> Int? {
+        guard end > start else { return nil }
+        let edited = InningsDelay(start: start, end: end, allowanceMinutes: 0)
+        if matchPhase == .second {
+            return secondWorksheet(with: secondInningsDelays.filter { $0.id != id } + [edited]).revisedOvers
+        }
+        return firstInningsPlan(for: firstInningsDelays.filter { $0.id != id } + [edited])?.oversPerTeam
+    }
+
+    /// Start-by table for stoppage `id` (nil = a new one) that began at `start`.
+    func restartDeadlines(replacing id: UUID?, stoppedAt start: Date, horizon: Int = 300, limit: Int = 4) -> [(overs: Int, latest: Date)] {
+        var latest: [Int: Date] = [:]
+        var order: [Int] = []
+        for m in 1...horizon {
+            let t = TU.addMin(start, m)
+            guard let o = overs(replacing: id, start: start, end: t), o > 0 else { break }
+            if latest[o] == nil { order.append(o) }
+            latest[o] = t
+        }
+        return order.prefix(limit).compactMap { o in latest[o].map { (o, $0) } }
+    }
+
+    /// True when the recorded 1st innings has already used all the playing time its revised length allows,
+    /// i.e. the innings has reached its end (termination: Appendix J 1.2).
+    var firstInningsTimeUsedUp: Bool {
+        guard matchPhase != .second, !firstInningsDelays.isEmpty else { return false }
+        return B_timeInProgress >= firstInningsPlan.inningsMinutes
+    }
+
     /// First-innings playing minutes already used when play stopped at `start`.
     func firstInningsPlayed(before start: Date) -> Int {
         max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)

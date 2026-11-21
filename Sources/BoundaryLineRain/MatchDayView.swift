@@ -479,6 +479,20 @@ struct StoppageEditSheet: View {
                 DatePicker("Play stopped", selection: $start, displayedComponents: .hourAndMinute)
                 DatePicker("Play resumed", selection: $end, displayedComponents: .hourAndMinute)
                 Text("\(TU.signedMinBetween(start, end)) min").monospacedDigit()
+                if let o = ms.overs(replacing: delay.id, start: start, end: end) {
+                    Text(second ? "\(o) overs in this innings" : "\(o) overs a side")
+                        .font(.title2.weight(.heavy)).foregroundStyle(Board.gold)
+                }
+                Section("Start by (from a stop at \(TU.shortTime(start)))") {
+                    ForEach(ms.restartDeadlines(replacing: delay.id, stoppedAt: start), id: \.overs) { row in
+                        HStack {
+                            Text("\(row.overs) overs").monospacedDigit()
+                            Spacer()
+                            Text("restart by \(TU.shortTime(row.latest))").monospacedDigit()
+                                .font(.body.weight(.semibold))
+                        }
+                    }
+                }
                 if failed {
                     Text("Those times overlap another stoppage or run backwards.").foregroundStyle(.red)
                 }
@@ -516,6 +530,20 @@ struct FirstInningsPanel: View {
     var body: some View {
         VStack(spacing: 14) {
             BlockingBanner(warnings: ms.blockingWarnings)
+            if ms.firstInningsTimeUsedUp {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("END OF 1ST INNINGS: TERMINATION", systemImage: "flag.slash.fill")
+                        .font(.headline.weight(.heavy))
+                    Text("The 1st innings has had \(ms.B_timeInProgress) min of play. At \(plan.oversPerTeam) overs a side it only lasts \(plan.inningsMinutes) min, so the innings cannot resume. Complete the termination sheet (Show working → Termination) for the 2nd innings overs.")
+                        .font(.callout)
+                }
+                .foregroundStyle(.white)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Board.stop)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onAppear { Haptic.warning() }
+            }
             AnswerBoard(
                 caption: loss.totalLoss > 0 ? "Revised match" : "Full match",
                 headline: "\(plan.oversPerTeam)", headlineUnit: "overs a side",

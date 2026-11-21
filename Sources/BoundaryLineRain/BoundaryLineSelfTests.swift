@@ -269,6 +269,20 @@ enum BoundaryLineSelfTests {
         r.check("Flow: start-by table gives the latest restart for each overs figure", consistent,
                 rows.map { "\($0.overs)@\(TU.shortTime($0.latest))" }.joined(separator: " "))
         r.check("Flow: overlapping after-the-event stoppage rejected", w.recordStoppage(from: day(20, 10), to: day(20, 30)) != nil)
+        // Correcting a stoppage: the pure "what if" must equal the recorded plan.
+        r.equal("Flow: plan for the recorded stoppages equals the live plan",
+                [w.firstInningsPlan(for: w.firstInningsDelays)?.oversPerTeam ?? -1, w.firstInningsPlan.oversPerTeam], [18, 18])
+        if let d = w.firstInningsDelays.first {
+            let ov = w.overs(replacing: d.id, start: day(20), end: day(20, 30))
+            _ = w.editFirstInningsDelay(id: d.id, start: day(20), end: day(20, 30))
+            r.equal("Flow: edit preview (20:00-20:30) equals the plan after saving the edit", [ov ?? -1], [w.firstInningsPlan.oversPerTeam])
+        }
+        r.check("Flow: no termination alert with time left in the innings", !w.firstInningsTimeUsedUp)
+        let tm = MatchState(); tm.startMatch(.wbbl)
+        tm.gameStartTime = day(19, 40); tm.recordFirstBall(at: day(19, 40))
+        _ = tm.recordStoppage(from: day(20, 50), to: day(21, 50))   // 70 min played, 60 min lost
+        r.check("Flow: termination alert when the innings has used its revised length",
+                tm.firstInningsTimeUsedUp, "played \(tm.B_timeInProgress) vs length \(tm.firstInningsPlan.inningsMinutes)")
 
         ms.saveCurrentMatch()
         ms.matchPhase = .before

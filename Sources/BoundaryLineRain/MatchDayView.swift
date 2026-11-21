@@ -291,6 +291,8 @@ struct StoppageControl: View {
     @State private var restartAt = TU.addMin(StoppageControl.nowToMinute(), 30)
     @State private var message: String?
     @State private var recorded = false
+    @State private var open = false
+    @State private var showStartBy = false
 
     static func nowToMinute() -> Date {
         Calendar.current.dateInterval(of: .minute, for: Date())?.start ?? Date()
@@ -300,6 +302,28 @@ struct StoppageControl: View {
     private var minutesOff: Int { TU.minBetween(stoppedAt, restart) }
 
     var body: some View {
+        VStack(spacing: 12) {
+            if open { form } else {
+                BigActionButton(title: "Rain stoppage: work out the restart", systemImage: "cloud.rain.fill",
+                                color: Board.rain, foreground: Board.bg) {
+                    stoppedAt = StoppageControl.nowToMinute()
+                    restartAt = TU.addMin(stoppedAt, 30)
+                    message = nil; recorded = false
+                    withAnimation { open = true }
+                }
+                if recorded {
+                    Text("Stoppage recorded. The board above shows the revised match.")
+                        .font(.callout).foregroundStyle(Board.pitch)
+                }
+            }
+        }
+        .onAppear {
+            // A stoppage started with the earlier live button is carried into the form.
+            if let o = ms.openStoppageStart { stoppedAt = o; ms.cancelOpenStoppage(); open = true }
+        }
+    }
+
+    private var form: some View {
         VStack(spacing: 12) {
             BoardSection(title: "Rain stoppage") {
                 BoardTimeRow(label: "Play stopped at", time: $stoppedAt)
@@ -317,23 +341,17 @@ struct StoppageControl: View {
                 message = ms.recordStoppage(from: stoppedAt, to: restart)
                 if message == nil {
                     Haptic.success(); recorded = true
-                    stoppedAt = StoppageControl.nowToMinute()
-                    restartAt = TU.addMin(stoppedAt, 30)
+                    withAnimation { open = false }
                 } else { Haptic.warning() }
             }
             if let message {
                 Text(message).font(.callout.weight(.semibold)).foregroundStyle(Board.stop)
-            } else if recorded {
-                Text("Stoppage recorded. The board above shows the revised match.")
-                    .font(.callout).foregroundStyle(Board.pitch)
             }
+            Button("Cancel") { withAnimation { open = false }; message = nil }
+                .font(.callout.weight(.semibold)).foregroundStyle(Board.dim)
         }
-        .onAppear {
-            // A stoppage started with the earlier live button is carried into the form.
-            if let open = ms.openStoppageStart { stoppedAt = open; ms.cancelOpenStoppage() }
-        }
-        .onChange(of: stoppedAt) { _, _ in recorded = false; message = nil }
-        .onChange(of: restartAt) { _, _ in recorded = false; message = nil }
+        .onChange(of: stoppedAt) { _, _ in message = nil }
+        .onChange(of: restartAt) { _, _ in message = nil }
     }
 
     @ViewBuilder private var result: some View {
@@ -352,6 +370,11 @@ struct StoppageControl: View {
                     .foregroundStyle(Board.gold)
                 Text("1st innings ends \(TU.shortTime(p.firstCessation)) · break \(TU.minBetween(p.firstCessation, p.secondStart)) min · match ends \(TU.shortTime(p.secondCessation))")
                     .font(.headline).foregroundStyle(Board.text)
+                if ms.firstInningsPlayed(before: stoppedAt) >= p.inningsMinutes {
+                    Label("The 1st innings has already used its \(p.inningsMinutes) min at this length: check whether it is terminated (Show working → Termination).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout.weight(.semibold)).foregroundStyle(Board.stop)
+                }
             }
         } else {
             Text("Restart must be after play stopped.").font(.callout).foregroundStyle(Board.stop)
@@ -359,8 +382,17 @@ struct StoppageControl: View {
     }
 
     @ViewBuilder private var startByTable: some View {
-        let rows = ms.restartDeadlines(stoppedAt: stoppedAt)
+        let rows = ms.restartDeadlines(stoppedAt: stoppedAt, limit: 4)
         if !rows.isEmpty {
+            Button { withAnimation { showStartBy.toggle() } } label: {
+                Label(showStartBy ? "Hide start-by times" : "Show start-by times (latest restart for each overs figure)",
+                      systemImage: showStartBy ? "chevron.up" : "chevron.down")
+                    .font(.callout.weight(.semibold)).foregroundStyle(Board.gold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+        }
+        if showStartBy && !rows.isEmpty {
             BoardSection(title: ms.matchPhase == .second ? "Start by (overs this innings)" : "Start by (overs a side)") {
                 ForEach(rows, id: \.overs) { row in
                     HStack {

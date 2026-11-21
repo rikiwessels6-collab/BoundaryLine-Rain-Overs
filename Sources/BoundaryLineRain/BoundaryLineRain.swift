@@ -3830,7 +3830,6 @@ struct BrandHeader: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 8) {
                         BoundaryLineBrandMark()
-                        CalculationClock()
                     }
                     Group {
                         if !ms.teamA.isEmpty || !ms.teamB.isEmpty {

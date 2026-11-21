@@ -113,6 +113,11 @@ extension MatchState {
         return order.prefix(limit).compactMap { o in latest[o].map { (o, $0) } }
     }
 
+    /// First-innings playing minutes already used when play stopped at `start`.
+    func firstInningsPlayed(before start: Date) -> Int {
+        max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)
+    }
+
     /// Discards an open stoppage without recording it (tapped by mistake).
     func cancelOpenStoppage() { openStoppageStart = nil }
 

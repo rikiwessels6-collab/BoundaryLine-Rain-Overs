@@ -5,9 +5,14 @@ on:
   workflow_dispatch:
 jobs:
   build-and-test:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      - name: Use Xcode 26 (App Store requires the iOS 26 SDK)
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then echo "::error::No Xcode 26 on this runner"; ls -d /Applications/Xcode*; exit 1; fi
+          sudo xcode-select -s "$X"; xcodebuild -version
       - name: Xcode version
         run: xcodebuild -version
       - name: Install XcodeGen

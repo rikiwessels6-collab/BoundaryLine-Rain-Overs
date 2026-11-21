@@ -294,6 +294,16 @@ enum BoundaryLineSelfTests {
         r.equal("Flow: a restart after midnight is the next day (23:50 -> 00:20 = 30 min)",
                 [TU.minBetween(nd.onMatchDay(day(23, 50)), nd.onMatchDay(day(0, 20)))], [30])
 
+        // Correcting a late start: 30 min late, then removed.
+        let ls = MatchState(); ls.startMatch(.wbbl)
+        ls.gameStartTime = day(15); ls.recordFirstBall(at: day(15, 30))
+        let lateOvers = ls.firstInningsPlan.oversPerTeam
+        r.check("Flow: remove a late start", ls.correctFirstBall(to: day(15)))
+        r.equal("... 30 min late gave 17 a side; removed -> 20 a side, 15 min break",
+                [lateOvers, ls.firstInningsPlan.oversPerTeam, ls.M_intervalLength], [17, 20, 15])
+        _ = ls.recordStoppage(from: day(15, 20), to: day(15, 40))
+        r.check("Flow: first ball can't be moved past a recorded stoppage", !ls.correctFirstBall(to: day(15, 30)))
+
         ms.saveCurrentMatch()
         ms.matchPhase = .before
         if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {

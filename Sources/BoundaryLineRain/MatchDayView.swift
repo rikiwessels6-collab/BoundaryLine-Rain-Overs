@@ -461,6 +461,7 @@ struct StoppageListSection: View {
     @EnvironmentObject var ms: MatchState
     let second: Bool
     @State private var editing: InningsDelay?
+    @State private var editingLateStart = false
 
     private var delays: [InningsDelay] { (second ? ms.secondInningsDelays : ms.firstInningsDelays).sorted { $0.start < $1.start } }
 
@@ -468,7 +469,10 @@ struct StoppageListSection: View {
         if !delays.isEmpty || (!second && ms.LS_actualStart > ms.gameStartTime) {
             BoardSection(title: "Time lost") {
                 if !second && ms.LS_actualStart > ms.gameStartTime {
-                    row(label: "Late start", from: ms.gameStartTime, to: ms.LS_actualStart)
+                    Button { editingLateStart = true } label: {
+                        row(label: "Late start", from: ms.gameStartTime, to: ms.LS_actualStart, editable: true)
+                    }
+                    .buttonStyle(.plain)
                 }
                 ForEach(delays) { d in
                     Button { editing = d } label: {
@@ -483,6 +487,9 @@ struct StoppageListSection: View {
             }
             .sheet(item: $editing) { d in
                 StoppageEditSheet(delay: d, second: second).environmentObject(ms)
+            }
+            .sheet(isPresented: $editingLateStart) {
+                LateStartEditSheet().environmentObject(ms)
             }
         }
     }
@@ -500,6 +507,46 @@ struct StoppageListSection: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+}
+
+struct LateStartEditSheet: View {
+    @EnvironmentObject var ms: MatchState
+    @Environment(\.dismiss) private var dismiss
+    @State private var firstBall = Date()
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                HStack {
+                    Text("Scheduled start"); Spacer()
+                    Text(TU.shortTime(ms.gameStartTime)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                DatePicker("First ball", selection: $firstBall, displayedComponents: .hourAndMinute)
+                Text("Late start: \(TU.minBetween(ms.gameStartTime, ms.onMatchDay(firstBall))) min").monospacedDigit()
+                if failed {
+                    Text("The first ball can't be after a recorded stoppage. Correct or delete the stoppage first.")
+                        .foregroundStyle(.red)
+                }
+                Section {
+                    Button("Remove late start (play started on time)", role: .destructive) {
+                        if ms.correctFirstBall(to: ms.gameStartTime) { dismiss() } else { failed = true }
+                    }
+                }
+            }
+            .navigationTitle("Correct late start")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { firstBall = ms.LS_actualStart }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        if ms.correctFirstBall(to: firstBall) { dismiss() } else { failed = true; Haptic.warning() }
+                    }
+                }
+            }
+        }
     }
 }
 

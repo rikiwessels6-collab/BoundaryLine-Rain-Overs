@@ -52,6 +52,22 @@ extension MatchState {
         matchPhase = .first
     }
 
+    /// Corrects the first ball after it was recorded (or removes a late start: pass the scheduled start).
+    /// Refused if the new time would fall inside or after a recorded stoppage.
+    @discardableResult
+    func correctFirstBall(to clock: Date) -> Bool {
+        let ball = max(onMatchDay(clock), gameStartTime)
+        if let first = firstInningsDelays.map(\.start).min(), ball > first { return false }
+        LS_actualStart = ball
+        if firstInningsDelays.isEmpty {
+            B_timeInProgress = 0; C_playingTimeLost = 0; J_startOrRecommence = ball
+            updateIntervalIfNeeded()
+        } else {
+            rebuildFirstInningsFromLogs()
+        }
+        return true
+    }
+
     /// Latest permissible first ball for domestic T20s (BBL/WBBL), or nil where the PCs give none.
     var latestPermissibleStart: Date? {
         guard competition.isT20, !competition.isInternational,

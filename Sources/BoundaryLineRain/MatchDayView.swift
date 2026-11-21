@@ -188,6 +188,39 @@ struct BoardTimeRow: View {
     }
 }
 
+/// A time that stays blank until the umpire adds it.
+struct OptionalTimeRow: View {
+    let label: String
+    @Binding var time: Date?
+    var body: some View {
+        HStack {
+            Text(label).font(.body.weight(.semibold)).foregroundStyle(Board.text)
+            Spacer()
+            if let t = time {
+                DatePicker("", selection: Binding(get: { t }, set: { time = $0 }), displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .environment(\.colorScheme, .dark)
+                Button { time = nil } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Board.dim)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear \(label)")
+            } else {
+                Button {
+                    time = Calendar.current.dateInterval(of: .minute, for: Date())?.start ?? Date()
+                } label: {
+                    Text("Add time")
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .foregroundStyle(Board.gold)
+                        .overlay(Capsule().stroke(Board.gold.opacity(0.6)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 struct BlockingBanner: View {
     let warnings: [ValidationWarning]
     var body: some View {
@@ -287,8 +320,8 @@ struct BeforePlayPanel: View {
 
 struct StoppageControl: View {
     @EnvironmentObject var ms: MatchState
-    @State private var stoppedAt = StoppageControl.nowToMinute()
-    @State private var restartAt = TU.addMin(StoppageControl.nowToMinute(), 30)
+    @State private var stoppedAtValue: Date? = nil
+    @State private var restartAtValue: Date? = nil
     @State private var message: String?
     @State private var recorded = false
     @State private var open = false
@@ -298,16 +331,18 @@ struct StoppageControl: View {
         Calendar.current.dateInterval(of: .minute, for: Date())?.start ?? Date()
     }
     /// A restart clock time earlier than the stop time is the next day (after midnight).
-    private var restart: Date { restartAt <= stoppedAt ? TU.addMin(restartAt, 24 * 60) : restartAt }
-    private var minutesOff: Int { TU.minBetween(stoppedAt, restart) }
+    private var restart: Date? {
+        guard let s = stoppedAtValue, let r = restartAtValue else { return nil }
+        return r <= s ? TU.addMin(r, 24 * 60) : r
+    }
 
     var body: some View {
         VStack(spacing: 12) {
             if open { form } else {
                 BigActionButton(title: "Rain stoppage: work out the restart", systemImage: "cloud.rain.fill",
                                 color: Board.rain, foreground: Board.bg) {
-                    stoppedAt = StoppageControl.nowToMinute()
-                    restartAt = TU.addMin(stoppedAt, 30)
+                    stoppedAtValue = nil
+                    restartAtValue = nil
                     message = nil; recorded = false
                     withAnimation { open = true }
                 }
@@ -319,26 +354,35 @@ struct StoppageControl: View {
         }
         .onAppear {
             // A stoppage started with the earlier live button is carried into the form.
-            if let o = ms.openStoppageStart { stoppedAt = o; ms.cancelOpenStoppage(); open = true }
+            if let o = ms.openStoppageStart { stoppedAtValue = o; ms.cancelOpenStoppage(); open = true }
         }
     }
 
     private var form: some View {
         VStack(spacing: 12) {
             BoardSection(title: "Rain stoppage") {
-                BoardTimeRow(label: "Play stopped at", time: $stoppedAt)
-                BoardTimeRow(label: "Restart at", time: $restartAt)
-                HStack {
-                    Text("Time off").foregroundStyle(Board.dim)
-                    Spacer()
-                    Text("\(minutesOff) min").font(.headline.monospacedDigit()).foregroundStyle(Board.rain)
+                OptionalTimeRow(label: "Play stopped at", time: $stoppedAtValue)
+                OptionalTimeRow(label: "Restart at", time: $restartAtValue)
+                if let s = stoppedAtValue, let r = restart {
+                    HStack {
+                        Text("Time off").foregroundStyle(Board.dim)
+                        Spacer()
+                        Text("\(TU.minBetween(s, r)) min").font(.headline.monospacedDigit()).foregroundStyle(Board.rain)
+                    }
+                    result(stoppedAt: s, restart: r)
+                } else {
+                    Text(stoppedAtValue == nil ? "Add when play stopped." : "Add a restart time to see the overs.")
+                        .font(.callout).foregroundStyle(Board.dim)
                 }
-                result
             }
-            startByTable
+            if let s = stoppedAtValue { startByTable(stoppedAt: s) }
             BigActionButton(title: "Record stoppage (play restarted)", systemImage: "checkmark.circle.fill",
-                            color: Board.pitch, foreground: Board.bg) {
-                message = ms.recordStoppage(from: stoppedAt, to: restart)
+                            color: restart == nil ? Board.panelHi : Board.pitch,
+                            foreground: restart == nil ? Board.dim : Board.bg) {
+                guard let s = stoppedAtValue, let r = restart else {
+                    message = "Add both times first."; Haptic.warning(); return
+                }
+                message = ms.recordStoppage(from: s, to: r)
                 if message == nil {
                     Haptic.success(); recorded = true
                     withAnimation { open = false }
@@ -350,11 +394,11 @@ struct StoppageControl: View {
             Button("Cancel") { withAnimation { open = false }; message = nil }
                 .font(.callout.weight(.semibold)).foregroundStyle(Board.dim)
         }
-        .onChange(of: stoppedAt) { _, _ in message = nil }
-        .onChange(of: restartAt) { _, _ in message = nil }
+        .onChange(of: stoppedAtValue) { _, _ in message = nil }
+        .onChange(of: restartAtValue) { _, _ in message = nil }
     }
 
-    @ViewBuilder private var result: some View {
+    @ViewBuilder private func result(stoppedAt: Date, restart: Date) -> some View {
         if ms.matchPhase == .second, let w = ms.secondInningsPreview(stoppedAt: stoppedAt, resumingAt: restart) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Restart at \(TU.shortTime(restart)):").font(.subheadline).foregroundStyle(Board.dim)
@@ -381,7 +425,7 @@ struct StoppageControl: View {
         }
     }
 
-    @ViewBuilder private var startByTable: some View {
+    @ViewBuilder private func startByTable(stoppedAt: Date) -> some View {
         let rows = ms.restartDeadlines(stoppedAt: stoppedAt, limit: 4)
         if !rows.isEmpty {
             Button { withAnimation { showStartBy.toggle() } } label: {

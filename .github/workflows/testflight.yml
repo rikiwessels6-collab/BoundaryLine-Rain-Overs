@@ -1,0 +1,71 @@
+name: TestFlight
+# Run by hand: Actions tab > TestFlight > Run workflow.
+# Needs repository secrets: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (full .p8 text), APPLE_TEAM_ID.
+on:
+  workflow_dispatch:
+jobs:
+  upload:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets are set
+        env:
+          K: ${{ secrets.ASC_KEY_ID }}
+          I: ${{ secrets.ASC_ISSUER_ID }}
+          P: ${{ secrets.ASC_KEY_P8 }}
+          T: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          [ -z "$K" ] && missing="$missing ASC_KEY_ID"
+          [ -z "$I" ] && missing="$missing ASC_ISSUER_ID"
+          [ -z "$P" ] && missing="$missing ASC_KEY_P8"
+          [ -z "$T" ] && missing="$missing APPLE_TEAM_ID"
+          if [ -n "$missing" ]; then echo "::error::Missing secrets:$missing"; exit 1; fi
+      - name: Write API key
+        env:
+          P: ${{ secrets.ASC_KEY_P8 }}
+          K: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s\n' "$P" > ~/private_keys/AuthKey_$K.p8
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Self-tests must pass before upload
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available | grep -E "iPad" | head -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          xcodebuild test -project BoundaryLineRain.xcodeproj -scheme BoundaryLineRain \
+            -destination "id=$UDID" CODE_SIGNING_ALLOWED=NO | tail -20
+      - name: Archive (signed with the App Store Connect API key)
+        run: |
+          set -o pipefail
+          xcodebuild archive -project BoundaryLineRain.xcodeproj -scheme BoundaryLineRain \
+            -configuration Release -destination "generic/platform=iOS" \
+            -archivePath build/BoundaryLineRain.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION=$((100 + ${{ github.run_number }})) | tail -30
+      - name: Export and upload to TestFlight
+        run: |
+          set -o pipefail
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/BoundaryLineRain.xcarchive \
+            -exportOptionsPlist ExportOptions.plist -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} | tail -30
+          echo "### Uploaded 1.5 build $((100 + ${{ github.run_number }})) to App Store Connect" >> "$GITHUB_STEP_SUMMARY"

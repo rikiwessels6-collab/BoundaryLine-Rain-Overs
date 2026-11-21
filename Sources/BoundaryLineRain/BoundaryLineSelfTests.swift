@@ -284,6 +284,16 @@ enum BoundaryLineSelfTests {
         r.check("Flow: termination alert when the innings has used its revised length",
                 tm.firstInningsTimeUsedUp, "played \(tm.B_timeInProgress) vs length \(tm.firstInningsPlan.inningsMinutes)")
 
+        // Match set up the day before: times entered on the match day are compared on the same day.
+        let nd = MatchState(); nd.startMatch(.wbbl)
+        nd.gameStartTime = day(14, 40); nd.recordFirstBall(at: day(14, 40))
+        let err = nd.recordStoppage(from: day(15, plus: 1), to: day(15, 20, plus: 1))
+        r.check("Flow: next-day clock times map to the match day (2:40 start, 3:00-3:20 stoppage)", err == nil, err ?? "")
+        r.equal("... 20 min played, 20 min lost -> 18 overs a side",
+                [nd.B_timeInProgress, nd.C_playingTimeLost, nd.firstInningsPlan.oversPerTeam], [20, 20, 18])
+        r.equal("Flow: a restart after midnight is the next day (23:50 -> 00:20 = 30 min)",
+                [TU.minBetween(nd.onMatchDay(day(23, 50)), nd.onMatchDay(day(0, 20)))], [30])
+
         ms.saveCurrentMatch()
         ms.matchPhase = .before
         if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {

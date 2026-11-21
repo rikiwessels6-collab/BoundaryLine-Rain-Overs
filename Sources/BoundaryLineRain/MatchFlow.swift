@@ -9,11 +9,39 @@ import Foundation
 
 extension MatchState {
 
+    // MARK: Match-day clock
+
+    /// Puts a clock time on the match day. Time pickers keep whatever date a Date already had, so a
+    /// match set up the night before would otherwise compare Saturday's start with Sunday's stoppage.
+    /// A time more than 6 hours before the scheduled start is treated as after midnight.
+    func onMatchDay(_ clock: Date) -> Date {
+        let cal = Calendar.current
+        let hm = cal.dateComponents([.hour, .minute], from: clock)
+        guard let h = hm.hour, let m = hm.minute,
+              var d = cal.date(bySettingHour: h, minute: m, second: 0, of: gameStartTime) else { return clock }
+        if d < TU.addMin(gameStartTime, -6 * 60) { d = TU.addMin(d, 24 * 60) }
+        return d
+    }
+
+    /// Scheduled start set from a clock time. Before the first ball is recorded it moves to today,
+    /// so a match created on an earlier day is played on the day it is used.
+    func setScheduledStart(clock: Date) {
+        let cal = Calendar.current
+        let hm = cal.dateComponents([.hour, .minute], from: clock)
+        let base = (matchPhase == .before && firstInningsDelays.isEmpty) ? Date() : gameStartTime
+        if let h = hm.hour, let m = hm.minute,
+           let d = cal.date(bySettingHour: h, minute: m, second: 0, of: base) {
+            gameStartTime = d
+            if LS_actualStart < d || matchPhase == .before { LS_actualStart = d }
+            updateIntervalIfNeeded()
+        }
+    }
+
     // MARK: Before play
 
     /// Records the first ball. A first ball before the scheduled start is treated as on time.
     func recordFirstBall(at time: Date) {
-        let ball = max(time, gameStartTime)
+        let ball = max(onMatchDay(time), gameStartTime)
         LS_actualStart = ball
         if firstInningsDelays.isEmpty {
             B_timeInProgress = 0
@@ -86,6 +114,9 @@ extension MatchState {
     /// Records a stoppage entered after coming off: stopped at `start`, play restarted at `end`.
     @discardableResult
     func recordStoppage(from start: Date, to end: Date) -> String? {
+        let start = onMatchDay(start)
+        var end = onMatchDay(end)
+        if end <= start { end = TU.addMin(end, 24 * 60) }
         let previous = openStoppageStart
         openStoppageStart = nil
         if let message = stopPlay(at: start) { openStoppageStart = previous; return message }
@@ -101,7 +132,8 @@ extension MatchState {
 
     /// The latest restart time that still gives each number of overs, highest overs first.
     /// Scans minute by minute from the stop time (up to `horizon` minutes) using the same previews.
-    func restartDeadlines(stoppedAt start: Date, horizon: Int = 300, limit: Int = 6) -> [(overs: Int, latest: Date)] {
+    func restartDeadlines(stoppedAt rawStart: Date, horizon: Int = 300, limit: Int = 6) -> [(overs: Int, latest: Date)] {
+        let start = onMatchDay(rawStart)
         var latest: [Int: Date] = [:]
         var order: [Int] = []
         for m in 1...horizon {
@@ -137,7 +169,10 @@ extension MatchState {
     }
 
     /// Overs for the current innings if stoppage `id` (nil = a new one) ran from `start` to `end`.
-    func overs(replacing id: UUID?, start: Date, end: Date) -> Int? {
+    func overs(replacing id: UUID?, start rawStart: Date, end rawEnd: Date) -> Int? {
+        let start = onMatchDay(rawStart)
+        var end = onMatchDay(rawEnd)
+        if end <= start { end = TU.addMin(end, 24 * 60) }
         guard end > start else { return nil }
         let edited = InningsDelay(start: start, end: end, allowanceMinutes: 0)
         if matchPhase == .second {
@@ -147,7 +182,8 @@ extension MatchState {
     }
 
     /// Start-by table for stoppage `id` (nil = a new one) that began at `start`.
-    func restartDeadlines(replacing id: UUID?, stoppedAt start: Date, horizon: Int = 300, limit: Int = 4) -> [(overs: Int, latest: Date)] {
+    func restartDeadlines(replacing id: UUID?, stoppedAt rawStart: Date, horizon: Int = 300, limit: Int = 4) -> [(overs: Int, latest: Date)] {
+        let start = onMatchDay(rawStart)
         var latest: [Int: Date] = [:]
         var order: [Int] = []
         for m in 1...horizon {
@@ -168,7 +204,7 @@ extension MatchState {
 
     /// First-innings playing minutes already used when play stopped at `start`.
     func firstInningsPlayed(before start: Date) -> Int {
-        max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)
+        max(0, TU.minBetween(LS_actualStart, onMatchDay(start)) - C_playingTimeLost)
     }
 
     /// Discards an open stoppage without recording it (tapped by mistake).
@@ -181,7 +217,10 @@ extension MatchState {
     }
 
     /// Pure preview for a stoppage entered after the event: stopped at `start`, restarting at `time`.
-    func firstInningsPreview(stoppedAt start: Date, resumingAt time: Date) -> EqualOversPlan? {
+    func firstInningsPreview(stoppedAt rawStart: Date, resumingAt rawTime: Date) -> EqualOversPlan? {
+        let start = onMatchDay(rawStart)
+        var time = onMatchDay(rawTime)
+        if time <= start { time = TU.addMin(time, 24 * 60) }
         guard time > start, matchPhase != .second else { return nil }
         let thisStoppage = TU.minBetween(start, time)
         let played = max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)
@@ -202,7 +241,8 @@ extension MatchState {
 
     /// First ball of the second innings. Overs default to the first-innings allocation; time gained by
     /// starting before the scheduled second-innings start is credited (App. J 1.4 step F, cl. 13.7.2.2.2).
-    func beginSecondInnings(at time: Date, overs: Int) {
+    func beginSecondInnings(at clock: Date, overs: Int) {
+        let time = onMatchDay(clock)
         let scheduled = firstInningsPlan.secondStart
         let o = min(rules.maxOversPerTeam, max(1, overs))
         H_maxOversAtStart = o
@@ -239,7 +279,10 @@ extension MatchState {
         return secondInningsPreview(stoppedAt: start, resumingAt: time)
     }
 
-    func secondInningsPreview(stoppedAt start: Date, resumingAt time: Date) -> SecondInningsWorksheet? {
+    func secondInningsPreview(stoppedAt rawStart: Date, resumingAt rawTime: Date) -> SecondInningsWorksheet? {
+        let start = onMatchDay(rawStart)
+        var time = onMatchDay(rawTime)
+        if time <= start { time = TU.addMin(time, 24 * 60) }
         guard matchPhase == .second, time > start else { return nil }
         return secondWorksheet(with: secondInningsDelays + [InningsDelay(start: start, end: time, allowanceMinutes: 0)])
     }
@@ -248,7 +291,10 @@ extension MatchState {
 
     /// Edits a recorded second-innings stoppage. Returns false if it would overlap or run backwards.
     @discardableResult
-    func editSecondInningsDelay(id: UUID, start: Date, end: Date) -> Bool {
+    func editSecondInningsDelay(id: UUID, start rawStart: Date, end rawEnd: Date) -> Bool {
+        let start = onMatchDay(rawStart)
+        var end = onMatchDay(rawEnd)
+        if end <= start { end = TU.addMin(end, 24 * 60) }
         guard end > start, start >= A3_startOfInnings else { return false }
         let others = secondInningsDelays.filter { $0.id != id }
         guard !others.contains(where: { start < $0.end && end > $0.start }),

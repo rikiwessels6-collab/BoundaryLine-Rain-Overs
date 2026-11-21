@@ -283,10 +283,12 @@ struct BeforePlayPanel: View {
                 note: lateBy > 0 ? "Late start: \(lateBy) min lost." : nil)
 
             BoardSection(title: "Start of play") {
-                BoardTimeRow(label: "Scheduled start", time: $ms.gameStartTime)
+                BoardTimeRow(label: "Scheduled start", time: Binding(
+                    get: { ms.gameStartTime },
+                    set: { ms.setScheduledStart(clock: $0) }))
                 BoardTimeRow(label: "Expected first ball", time: Binding(
                     get: { ms.LS_actualStart },
-                    set: { ms.LS_actualStart = max($0, ms.gameStartTime); ms.updateIntervalIfNeeded() }))
+                    set: { ms.LS_actualStart = max(ms.onMatchDay($0), ms.gameStartTime); ms.updateIntervalIfNeeded() }))
                 if let latest = ms.latestPermissibleStart {
                     HStack {
                         Text("Latest first ball (5 overs a side)").foregroundStyle(Board.dim)
@@ -415,7 +417,7 @@ struct StoppageControl: View {
                 Text("1st innings ends \(TU.shortTime(p.firstCessation)) · break \(TU.minBetween(p.firstCessation, p.secondStart)) min · match ends \(TU.shortTime(p.secondCessation))")
                     .font(.headline).foregroundStyle(Board.text)
                 if ms.firstInningsPlayed(before: stoppedAt) >= p.inningsMinutes {
-                    Label("The 1st innings has already used its \(p.inningsMinutes) min at this length: check whether it is terminated (Show working → Termination).",
+                    Label("Already \(ms.firstInningsPlayed(before: stoppedAt)) min of play before this stoppage. At \(p.oversPerTeam) overs a side the innings only lasts \(p.inningsMinutes) min, so it would be terminated (Show working → Termination).",
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.callout.weight(.semibold)).foregroundStyle(Board.stop)
                 }
@@ -554,8 +556,11 @@ struct StoppageEditSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let ok = second ? ms.editSecondInningsDelay(id: delay.id, start: start, end: end)
-                                        : ms.editFirstInningsDelay(id: delay.id, start: start, end: end)
+                        let s0 = ms.onMatchDay(start)
+                        var e0 = ms.onMatchDay(end)
+                        if e0 <= s0 { e0 = TU.addMin(e0, 24 * 60) }
+                        let ok = second ? ms.editSecondInningsDelay(id: delay.id, start: s0, end: e0)
+                                        : ms.editFirstInningsDelay(id: delay.id, start: s0, end: e0)
                         if ok { dismiss() } else { failed = true; Haptic.warning() }
                     }
                 }
@@ -578,7 +583,7 @@ struct FirstInningsPanel: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("END OF 1ST INNINGS: TERMINATION", systemImage: "flag.slash.fill")
                         .font(.headline.weight(.heavy))
-                    Text("The 1st innings has had \(ms.B_timeInProgress) min of play. At \(plan.oversPerTeam) overs a side it only lasts \(plan.inningsMinutes) min, so the innings cannot resume. Complete the termination sheet (Show working → Termination) for the 2nd innings overs.")
+                    Text("The 1st innings had \(ms.B_timeInProgress) min of play before the last stoppage. At \(plan.oversPerTeam) overs a side it only lasts \(plan.inningsMinutes) min, so the innings cannot resume. Complete the termination sheet (Show working → Termination) for the 2nd innings overs.")
                         .font(.callout)
                 }
                 .foregroundStyle(.white)

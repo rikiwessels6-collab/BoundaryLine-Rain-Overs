@@ -3,6 +3,8 @@ name: Screenshots
 # competition and stage with -blDemo, and saves a screenshot of each.
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   shots:
     runs-on: macos-26
@@ -46,7 +48,12 @@ jobs:
             done
           done
           ls shots
-      - uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: shots
+      - name: Publish screenshots to the 'screenshots' branch (review only, not part of the app)
+        run: |
+          cd shots
+          for f in *.png; do sips -Z 1400 "$f" >/dev/null; done
+          git init -q -b screenshots
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A && git commit -q -m "Screenshots for ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" screenshots

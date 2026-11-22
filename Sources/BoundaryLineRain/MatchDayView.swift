@@ -478,7 +478,9 @@ struct StoppageListSection: View {
 
     var body: some View {
         if !delays.isEmpty || (!second && ms.LS_actualStart > ms.gameStartTime) {
-            BoardSection(title: "Time lost") {
+            BoardSection(title: ms.matchPhase == .summary
+                         ? (second ? "Time lost: 2nd innings" : "Time lost: 1st innings")
+                         : "Time lost") {
                 if !second && ms.LS_actualStart > ms.gameStartTime {
                     Button { editingLateStart = true } label: {
                         row(label: "Late start", from: ms.gameStartTime, to: ms.LS_actualStart, editable: true)
@@ -491,7 +493,7 @@ struct StoppageListSection: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if !second, ms.undoFirstInningsDelays != nil {
+                if !second, ms.matchPhase == .first, ms.undoFirstInningsDelays != nil {
                     Button("Undo last change") { ms.undoLastFirstInningsChange() }
                         .font(.callout.weight(.semibold)).foregroundStyle(Board.gold)
                 }
@@ -734,6 +736,7 @@ struct SecondInningsPanel: View {
                 BlockingBanner(warnings: [ValidationWarning(message: "Revised overs are fewer than the overs already bowled. Check the stoppage times.", severity: .error)])
             }
             StoppageControl()
+            StoppageListSection(second: true)
             BoardSection(title: "Overs bowled (optional)") {
                 Stepper(value: $ms.secondInningsCompletedOvers, in: 0...ms.rules.maxOversPerTeam) {
                     Text("\(ms.secondInningsCompletedOvers).\(ms.secondInningsCompletedBalls) overs")
@@ -743,7 +746,6 @@ struct SecondInningsPanel: View {
                     Text("Balls in current over").foregroundStyle(Board.dim)
                 }
             }
-            StoppageListSection(second: true)
             RulesFooter(overs: w.revisedOvers)
             Button("Restart 2nd innings set-up") { ms.secondInningsStarted = false }
                 .font(.footnote).foregroundStyle(Board.dim)

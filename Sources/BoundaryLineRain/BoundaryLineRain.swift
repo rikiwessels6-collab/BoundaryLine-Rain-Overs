@@ -4577,7 +4577,12 @@ struct ContentView: View {
         }
         // Match day always uses the dark scoreboard look; the home screen follows the theme setting.
         .preferredColorScheme(ms.matchIsActive ? .dark : ms.themePreference.colorScheme)
-        .onAppear { selectedComp = ms.competition }
+        .onAppear {
+            #if DEBUG
+            DemoSetup.apply(to: ms)
+            #endif
+            selectedComp = ms.competition
+        }
         .onChange(of: ms.matchIsActive) { _, active in
             if active { selectedTab = .firstInns; selectedComp = ms.competition }
         }

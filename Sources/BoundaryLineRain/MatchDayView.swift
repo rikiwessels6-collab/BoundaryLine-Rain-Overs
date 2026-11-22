@@ -329,6 +329,11 @@ struct StoppageControl: View {
     @State private var open = false
     @State private var showStartBy = false
 
+    #if DEBUG
+    /// Debug-only screenshot set-up: opens the calculator with these times and the start-by table.
+    static var demo: (Date, Date)?
+    #endif
+
     static func nowToMinute() -> Date {
         Calendar.current.dateInterval(of: .minute, for: Date())?.start ?? Date()
     }
@@ -358,6 +363,12 @@ struct StoppageControl: View {
             // A stoppage started with the earlier live button is carried into the form.
             if let o = ms.openStoppageStart { stoppedAtValue = o; ms.cancelOpenStoppage(); open = true }
         }
+        #if DEBUG
+        .task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if let d = StoppageControl.demo { stoppedAtValue = d.0; restartAtValue = d.1; open = true; showStartBy = true }
+        }
+        #endif
     }
 
     private var form: some View {

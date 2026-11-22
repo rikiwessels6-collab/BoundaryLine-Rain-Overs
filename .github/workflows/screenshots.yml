@@ -1,0 +1,52 @@
+name: Screenshots
+# Run by hand: builds a Debug app for an iPad simulator, sets up a demo match for every
+# competition and stage with -blDemo, and saves a screenshot of each.
+on:
+  workflow_dispatch:
+jobs:
+  shots:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Xcode 26
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          sudo xcode-select -s "$X"; xcodebuild -version
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Boot an iPad simulator
+        id: sim
+        run: |
+          xcrun simctl list devices available | grep iPad
+          UDID=$(xcrun simctl list devices available | grep -E "iPad Pro 13" | head -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep iPad | head -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryLevel 100 --batteryState charged
+      - name: Build Debug for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild build -project BoundaryLineRain.xcodeproj -scheme BoundaryLineRain \
+            -configuration Debug -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | tail -5
+      - name: Screenshot every competition and stage
+        run: |
+          U=${{ steps.sim.outputs.udid }}
+          APP=$(find build/Build/Products -name "BoundaryLineRain.app" -maxdepth 3 | head -1)
+          xcrun simctl install "$U" "$APP"
+          BID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
+          mkdir -p shots
+          for C in WBBL BBL ODC WNCL ODI T20I; do
+            for S in before first calc second summary; do
+              xcrun simctl terminate "$U" "$BID" 2>/dev/null || true
+              xcrun simctl launch "$U" "$BID" -blDemo $C $S
+              sleep 6
+              xcrun simctl io "$U" screenshot "shots/${C}-${S}.png"
+            done
+          done
+          ls shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots

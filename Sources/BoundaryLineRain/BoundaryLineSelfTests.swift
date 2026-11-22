@@ -71,6 +71,7 @@ enum BoundaryLineSelfTests {
         secondInnings(r)
         bbl(r)
         flow(r)
+        deviceScript(r)
         icc(r)                                   // before persistence: that group deliberately corrupts stored data
         persistence(r, suite: suite, temp: temp)
         return r.results
@@ -216,6 +217,69 @@ enum BoundaryLineSelfTests {
         r.check("S7 ODC credit larger than stoppage is capped: allowance 40, revised 40", x.allowance == 40 && x.revised == 40, "got \(x)")
         x = overs(n, start: day(14), stopS: day(15), stopE: day(16, 20), initial: 40, used: 0, credit: 30)
         r.check("S8 WNCL 80-min stoppage, 60 pool + 30 credit: allowance 80, revised 40", x.allowance == 80 && x.revised == 40, "got \(x)")
+    }
+
+    // MARK: 9. Device test script scenarios (docs/device-test/expected.py, exact arithmetic, independent)
+    // Each scenario is driven through the same calls the match-day screens make. Expected values:
+    // [overs a side, break, 1st innings ends, 2nd starts, match ends, 2nd innings overs, 2nd innings ends]
+    // with times in minutes after midnight.
+    private static func deviceScript(_ r: Recorder) {
+        scenario(r, "W1 WBBL", .wbbl, start: day(19, 40), ball: day(19, 40),
+                 stops: [], secondBall: day(21, 10), secondStops: [],
+                 expect: [20, 15, 1255, 1270, 1345, 20, 1345])
+        scenario(r, "W2 WBBL", .wbbl, start: day(19, 40), ball: day(20, 10),
+                 stops: [], secondBall: day(21, 24), secondStops: [],
+                 expect: [17, 10, 1274, 1284, 1348, 17, 1348])
+        scenario(r, "W3 WBBL", .wbbl, start: day(19, 40), ball: day(19, 40),
+                 stops: [(day(20, 0), day(20, 20))], secondBall: day(21, 18), secondStops: [],
+                 expect: [18, 10, 1268, 1278, 1346, 18, 1346])
+        scenario(r, "W4 WBBL", .wbbl, start: day(19, 40), ball: day(19, 50),
+                 stops: [(day(20, 30), day(20, 45))], secondBall: day(21, 18), secondStops: [(day(21, 48), day(22, 5))],
+                 expect: [18, 10, 1273, 1283, 1351, 15, 1352])
+        scenario(r, "B1 BBL", .bbl, start: day(19, 15), ball: day(19, 15),
+                 stops: [(day(19, 45), day(20, 5))], secondBall: day(21, 2), secondStops: [],
+                 expect: [18, 15, 1247, 1262, 1334, 18, 1334])
+        scenario(r, "B2 BBL", .bbl, start: day(19, 15), ball: day(19, 15),
+                 stops: [(day(19, 45), day(20, 6))], secondBall: day(20, 58), secondStops: [(day(21, 38), day(21, 58))],
+                 expect: [18, 10, 1248, 1258, 1330, 13, 1330])
+        scenario(r, "O1 ODC", .odc, start: day(10, 0), ball: day(10, 45),
+                 stops: [], secondBall: day(14, 24), secondStops: [],
+                 expect: [45, 30, 834, 864, 1053, 45, 1053])
+        scenario(r, "O2 ODC", .odc, start: day(10, 0), ball: day(10, 0),
+                 stops: [(day(11, 0), day(12, 10))], secondBall: day(14, 31), secondStops: [(day(15, 31), day(16, 1))],
+                 expect: [43, 20, 851, 871, 1052, 36, 1053])
+        scenario(r, "N1 WNCL", .wncl, start: day(10, 0), ball: day(11, 0),
+                 stops: [(day(11, 30), day(12, 15))], secondBall: day(15, 10), secondStops: [],
+                 expect: [46, 30, 880, 910, 1085, 46, 1085])
+        scenario(r, "N2 WNCL", .wncl, start: day(10, 0), ball: day(10, 0),
+                 stops: [(day(11, 0), day(11, 30))], secondBall: day(14, 20), secondStops: [(day(15, 20), day(16, 10))],
+                 expect: [50, 40, 820, 860, 1050, 45, 1081])
+        scenario(r, "I1 ODI", .odi, start: day(14, 0), ball: day(14, 0),
+                 stops: [(day(14, 20), day(15, 5))], secondBall: day(18, 24), secondStops: [],
+                 expect: [45, 30, 1074, 1104, 1293, 45, 1293])
+        scenario(r, "I2 T20I", .t20i, start: day(19, 0), ball: day(19, 0),
+                 stops: [(day(19, 20), day(19, 50))], secondBall: day(20, 58), secondStops: [(day(21, 28), day(21, 45))],
+                 expect: [17, 15, 1243, 1258, 1331, 13, 1331])
+    }
+
+    private static func scenario(_ r: Recorder, _ name: String, _ comp: Competition, start: Date, ball: Date,
+                                 stops: [(Date, Date)], secondBall: Date, secondStops: [(Date, Date)], expect: [Int]) {
+        func mins(_ d: Date) -> Int {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+            return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        }
+        let ms = MatchState(); ms.startMatch(comp)
+        ms.gameStartTime = start
+        ms.recordFirstBall(at: ball)
+        var errors: [String] = []
+        for (a, b) in stops { if let e = ms.recordStoppage(from: a, to: b) { errors.append(e) } }
+        let p = ms.firstInningsPlan
+        ms.beginSecondInnings(at: secondBall, overs: p.oversPerTeam)
+        for (a, b) in secondStops { if let e = ms.recordStoppage(from: a, to: b) { errors.append(e) } }
+        let w = ms.secondInningsLive
+        let got = [p.oversPerTeam, TU.minBetween(p.firstCessation, p.secondStart), mins(p.firstCessation),
+                   mins(p.secondStart), mins(p.secondCessation), w.revisedOvers, mins(w.revisedCessation)]
+        r.equal("Script \(name)" + (errors.isEmpty ? "" : " (rejected: \(errors.joined(separator: "; ")))"), got, expect)
     }
 
     // MARK: 8. Match-day flow (one-tap first ball / play stopped / play resumed)

@@ -1,0 +1,336 @@
+[
+ {
+  "id": "W1",
+  "comp": "WBBL",
+  "start": 1180,
+  "ball": 1180,
+  "stops": [],
+  "secondFirstBall": 1270,
+  "secondStops": [],
+  "first": {
+   "overs": 20,
+   "interval": 15,
+   "firstEnd": 1255,
+   "secondStart": 1270,
+   "matchEnd": 1345,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 20,
+   "oversLost": 0,
+   "inningsEnd": 1345
+  }
+ },
+ {
+  "id": "W2",
+  "comp": "WBBL",
+  "start": 1180,
+  "ball": 1210,
+  "stops": [],
+  "secondFirstBall": 1284,
+  "secondStops": [],
+  "first": {
+   "overs": 17,
+   "interval": 10,
+   "firstEnd": 1274,
+   "secondStart": 1284,
+   "matchEnd": 1348,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 17,
+   "oversLost": 0,
+   "inningsEnd": 1348
+  }
+ },
+ {
+  "id": "W3",
+  "comp": "WBBL",
+  "start": 1180,
+  "ball": 1180,
+  "stops": [
+   [
+    1200,
+    1220
+   ]
+  ],
+  "secondFirstBall": 1278,
+  "secondStops": [],
+  "first": {
+   "overs": 18,
+   "interval": 10,
+   "firstEnd": 1268,
+   "secondStart": 1278,
+   "matchEnd": 1346,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 18,
+   "oversLost": 0,
+   "inningsEnd": 1346
+  }
+ },
+ {
+  "id": "W4",
+  "comp": "WBBL",
+  "start": 1180,
+  "ball": 1190,
+  "stops": [
+   [
+    1230,
+    1245
+   ]
+  ],
+  "secondFirstBall": 1278,
+  "secondStops": [
+   [
+    1308,
+    1325
+   ]
+  ],
+  "first": {
+   "overs": 18,
+   "interval": 10,
+   "firstEnd": 1273,
+   "secondStart": 1283,
+   "matchEnd": 1351,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 15,
+   "oversLost": 3,
+   "inningsEnd": 1352
+  }
+ },
+ {
+  "id": "B1",
+  "comp": "BBL",
+  "start": 1155,
+  "ball": 1155,
+  "stops": [
+   [
+    1185,
+    1205
+   ]
+  ],
+  "secondFirstBall": 1262,
+  "secondStops": [],
+  "first": {
+   "overs": 18,
+   "interval": 15,
+   "firstEnd": 1247,
+   "secondStart": 1262,
+   "matchEnd": 1334,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 18,
+   "oversLost": 0,
+   "inningsEnd": 1334
+  }
+ },
+ {
+  "id": "B2",
+  "comp": "BBL",
+  "start": 1155,
+  "ball": 1155,
+  "stops": [
+   [
+    1185,
+    1206
+   ]
+  ],
+  "secondFirstBall": 1258,
+  "secondStops": [
+   [
+    1298,
+    1318
+   ]
+  ],
+  "first": {
+   "overs": 18,
+   "interval": 10,
+   "firstEnd": 1248,
+   "secondStart": 1258,
+   "matchEnd": 1330,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 13,
+   "oversLost": 5,
+   "inningsEnd": 1330
+  }
+ },
+ {
+  "id": "O1",
+  "comp": "ODC",
+  "start": 600,
+  "ball": 645,
+  "stops": [],
+  "secondFirstBall": 864,
+  "secondStops": [],
+  "first": {
+   "overs": 45,
+   "interval": 30,
+   "firstEnd": 834,
+   "secondStart": 864,
+   "matchEnd": 1053,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 45,
+   "oversLost": 0,
+   "inningsEnd": 1053
+  }
+ },
+ {
+  "id": "O2",
+  "comp": "ODC",
+  "start": 600,
+  "ball": 600,
+  "stops": [
+   [
+    660,
+    730
+   ]
+  ],
+  "secondFirstBall": 871,
+  "secondStops": [
+   [
+    931,
+    961
+   ]
+  ],
+  "first": {
+   "overs": 43,
+   "interval": 20,
+   "firstEnd": 851,
+   "secondStart": 871,
+   "matchEnd": 1052,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 36,
+   "oversLost": 7,
+   "inningsEnd": 1053
+  }
+ },
+ {
+  "id": "N1",
+  "comp": "WNCL",
+  "start": 600,
+  "ball": 660,
+  "stops": [
+   [
+    690,
+    735
+   ]
+  ],
+  "secondFirstBall": 910,
+  "secondStops": [],
+  "first": {
+   "overs": 46,
+   "interval": 30,
+   "firstEnd": 880,
+   "secondStart": 910,
+   "matchEnd": 1085,
+   "extraUsed": 60
+  },
+  "second": {
+   "overs": 46,
+   "oversLost": 0,
+   "inningsEnd": 1085
+  }
+ },
+ {
+  "id": "N2",
+  "comp": "WNCL",
+  "start": 600,
+  "ball": 600,
+  "stops": [
+   [
+    660,
+    690
+   ]
+  ],
+  "secondFirstBall": 860,
+  "secondStops": [
+   [
+    920,
+    970
+   ]
+  ],
+  "first": {
+   "overs": 50,
+   "interval": 40,
+   "firstEnd": 820,
+   "secondStart": 860,
+   "matchEnd": 1050,
+   "extraUsed": 30
+  },
+  "second": {
+   "overs": 45,
+   "oversLost": 5,
+   "inningsEnd": 1081
+  }
+ },
+ {
+  "id": "I1",
+  "comp": "ODI",
+  "start": 840,
+  "ball": 840,
+  "stops": [
+   [
+    860,
+    905
+   ]
+  ],
+  "secondFirstBall": 1104,
+  "secondStops": [],
+  "first": {
+   "overs": 45,
+   "interval": 30,
+   "firstEnd": 1074,
+   "secondStart": 1104,
+   "matchEnd": 1293,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 45,
+   "oversLost": 0,
+   "inningsEnd": 1293
+  }
+ },
+ {
+  "id": "I2",
+  "comp": "T20I",
+  "start": 1140,
+  "ball": 1140,
+  "stops": [
+   [
+    1160,
+    1190
+   ]
+  ],
+  "secondFirstBall": 1258,
+  "secondStops": [
+   [
+    1288,
+    1305
+   ]
+  ],
+  "first": {
+   "overs": 17,
+   "interval": 15,
+   "firstEnd": 1243,
+   "secondStart": 1258,
+   "matchEnd": 1331,
+   "extraUsed": 0
+  },
+  "second": {
+   "overs": 13,
+   "oversLost": 4,
+   "inningsEnd": 1331
+  }
+ }
+]

@@ -422,6 +422,9 @@ enum BoundaryLineSelfTests {
         tc.gameStartTime = day(10); tc.recordFirstBall(at: day(10))
         let cc = tc.terminationCheck(restartingAt: day(16, 30), oversFaced: 40)
         r.equal("Termination ODC: R 60, S 15, terminated", [cc.minutes, Int(cc.potentialOvers), cc.terminated ? 1 : 0], [60, 15, 1])
+        // WBBL rounding down: S 10.67 -> 10 overs; 2nd innings 9:55 (+10 break) + 37.5 min = 10:32:30, after 10:25 -> stays 10.
+        r.equal("Termination WBBL: S 10.67 -> 2nd innings 10 overs (ends after cessation, so rounded down)",
+                [cw.secondInningsOvers], [10])
         // Recorded with overs faced: banner and 2nd-innings default overs follow S.
         _ = to.recordStoppage(from: day(15, 40), to: day(19, 15)); to.firstInningsOversFaced = 28
         r.equal("Termination recorded: 2nd innings defaults to S (25)", [to.recordedTermination?.terminated == true ? 1 : 0, to.secondInningsDefaultOvers], [1, 25])

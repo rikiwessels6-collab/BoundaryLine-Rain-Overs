@@ -450,7 +450,8 @@ struct StoppageControl: View {
                 Text("1st innings ends \(TU.shortTime(p.firstCessation)) · break \(TU.minBetween(p.firstCessation, p.secondStart)) min · match ends \(TU.shortTime(p.secondCessation))")
                     .font(.headline).foregroundStyle(Board.text)
                 if let t = oversFaced {
-                    let c = ms.terminationCheck(restartingAt: restart, oversFaced: t)
+                    let c = ms.terminationCheck(restartingAt: restart, oversFaced: t,
+                        totalLost: max(0, TU.minBetween(ms.gameStartTime, ms.LS_actualStart)) + ms.C_playingTimeLost + TU.minBetween(ms.onMatchDay(stoppedAt), restart))
                     if c.terminated {
                         Label("1st innings TERMINATED: only \(TU.fmtOvers(c.potentialOvers)) overs possible after the restart, \(t) already faced. 2nd innings: \(c.secondInningsOvers) overs.",
                               systemImage: "flag.slash.fill")

@@ -221,26 +221,37 @@ extension MatchState {
         var terminated: Bool { potentialOvers <= Double(oversFaced) }
         /// Overs for the side batting second if the innings is terminated (sheet 1.3 / Table 3: A = S).
         let secondInningsOvers: Int
+        let interval: Int
     }
 
     /// Each competition's own sheet:
     /// - WBBL / BBL: S = R / rate with no rounding; R runs from the restart to the cut-off as written.
     /// - ODC / WNCL: S = R / rate rounded up; R as written.
     /// - ICC ODI / T20I: S rounded up; R is the playing time remaining (13.7.2.1.3), so the interval is excluded.
-    func terminationCheck(restartingAt clock: Date, oversFaced: Int) -> TerminationCheck {
+    /// `totalLost`: all playing time lost so far including this stoppage (sets the interval).
+    /// WBBL / BBL keep S unrounded; the 2nd innings is then S rounded down, unless that innings would
+    /// finish before the cessation time, in which case it is rounded up (the umpires' application).
+    func terminationCheck(restartingAt clock: Date, oversFaced: Int, totalLost: Int? = nil) -> TerminationCheck {
         let p = onMatchDay(clock)
+        let lost = totalLost ?? (max(0, TU.minBetween(gameStartTime, LS_actualStart)) + C_playingTimeLost)
+        let interval = rules.adjustedInterval(timeLost: lost)
         let cessation = rescheduledCessationEnabled ? rescheduledCessation
                                                     : EqualOversCalculator.originalCessation(start: gameStartTime, rules: rules)
         let q = TU.addMin(cessation, rules.extraTimeMinutes)
         var r = TU.minBetween(p, q)
-        if competition.isInternational {
-            r = max(0, r - rules.adjustedInterval(timeLost: max(0, TU.minBetween(gameStartTime, p) - firstInningsPlayed(before: p))))
-        }
+        if competition.isInternational { r = max(0, r - interval) }
         let raw = Double(r) / rules.minutesPerOver
         let roundUp = !(competition.isT20 && !competition.isInternational)
         let s = roundUp ? ceil(raw - 1e-9) : TU.round2(raw)
-        let second = min(rules.maxOversPerTeam, Int(floor(s + 1e-9)))
-        return TerminationCheck(cutOff: q, minutes: r, potentialOvers: s, oversFaced: oversFaced, secondInningsOvers: second)
+        var second = Int(floor(s + 1e-9))
+        if !roundUp, Double(second) < s {
+            // 2nd innings starts after the interval; if it would end before cessation, round up instead.
+            let ends = Double(TU.minBetween(gameStartTime, p) + interval) + Double(second) * rules.minutesPerOver
+            if ends < Double(TU.minBetween(gameStartTime, cessation)) { second += 1 }
+        }
+        second = min(rules.maxOversPerTeam, second)
+        return TerminationCheck(cutOff: q, minutes: r, potentialOvers: s, oversFaced: oversFaced,
+                                secondInningsOvers: second, interval: interval)
     }
 
     /// The check at the last recorded restart, when overs faced were entered.

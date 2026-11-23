@@ -401,6 +401,31 @@ enum BoundaryLineSelfTests {
         r.check("Bowler text: one maximum per bowler (WNCL 28.7.4: 17 overs -> 4)",
                 CompRules.wncl.bowlingRestrictionText(for: 17) == "Max 4 overs per bowler", CompRules.wncl.bowlingRestrictionText(for: 17))
 
+        // Termination (audit C1), each competition's own sheet.
+        // WBBL slow over rate: 7:40 start, stopped 8:20 with 8 overs faced, restart 9:45.
+        // Q = 10:25, R = 40, S = 40 / 3.75 = 10.67 (no rounding) > 8 -> continues.
+        let tw = MatchState(); tw.startMatch(.wbbl)
+        tw.gameStartTime = day(19, 40); tw.recordFirstBall(at: day(19, 40))
+        let cw = tw.terminationCheck(restartingAt: day(21, 45), oversFaced: 8)
+        r.equal("Termination WBBL: R 40 min, S 10.67, continues (8 faced)",
+                [cw.minutes, Int((cw.potentialOvers * 100).rounded()), cw.terminated ? 1 : 0], [40, 1067, 0])
+        // ODI fast over rate: 2:00 start, stopped 3:40 with 28 faced, restart 7:15. Q = 9:30pm,
+        // playing time remaining = 135 - 30 interval = 105; S = ceil(105 / 4.2) = 25 <= 28 -> terminated, 2nd innings 25.
+        let to = MatchState(); to.startMatch(.odi)
+        to.gameStartTime = day(14); to.recordFirstBall(at: day(14))
+        let co = to.terminationCheck(restartingAt: day(19, 15), oversFaced: 28)
+        r.equal("Termination ODI: playing time 105 min (interval excluded), S 25, terminated, 2nd innings 25",
+                [co.minutes, Int(co.potentialOvers), co.terminated ? 1 : 0, co.secondInningsOvers], [105, 25, 1, 25])
+        // ODC (CA sheet as written, interval included, rounded up): 10:00 start, restart 4:30pm, 40 faced.
+        // Q = 5:30pm, R = 60, S = ceil(60 / 4.2) = 15 <= 40 -> terminated, 2nd innings 15.
+        let tc = MatchState(); tc.startMatch(.odc)
+        tc.gameStartTime = day(10); tc.recordFirstBall(at: day(10))
+        let cc = tc.terminationCheck(restartingAt: day(16, 30), oversFaced: 40)
+        r.equal("Termination ODC: R 60, S 15, terminated", [cc.minutes, Int(cc.potentialOvers), cc.terminated ? 1 : 0], [60, 15, 1])
+        // Recorded with overs faced: banner and 2nd-innings default overs follow S.
+        _ = to.recordStoppage(from: day(15, 40), to: day(19, 15)); to.firstInningsOversFaced = 28
+        r.equal("Termination recorded: 2nd innings defaults to S (25)", [to.recordedTermination?.terminated == true ? 1 : 0, to.secondInningsDefaultOvers], [1, 25])
+
         ms.saveCurrentMatch()
         ms.matchPhase = .before
         if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {

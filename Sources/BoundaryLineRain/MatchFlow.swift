@@ -211,6 +211,44 @@ extension MatchState {
         return order.prefix(limit).compactMap { o in latest[o].map { (o, $0) } }
     }
 
+    // MARK: Termination of the 1st innings (CA Appendix J 1.2 / ICC Appendix E Table 2, cl. 13.7.2.1.3)
+
+    struct TerminationCheck {
+        let cutOff: Date          // Q: original or rescheduled cessation, plus the full extra-time provision
+        let minutes: Int          // R: restart to Q (ICC: playing time only, the innings break excluded)
+        let potentialOvers: Double // S, rounded as the competition's sheet says
+        let oversFaced: Int       // T
+        var terminated: Bool { potentialOvers <= Double(oversFaced) }
+        /// Overs for the side batting second if the innings is terminated (sheet 1.3 / Table 3: A = S).
+        let secondInningsOvers: Int
+    }
+
+    /// Each competition's own sheet:
+    /// - WBBL / BBL: S = R / rate with no rounding; R runs from the restart to the cut-off as written.
+    /// - ODC / WNCL: S = R / rate rounded up; R as written.
+    /// - ICC ODI / T20I: S rounded up; R is the playing time remaining (13.7.2.1.3), so the interval is excluded.
+    func terminationCheck(restartingAt clock: Date, oversFaced: Int) -> TerminationCheck {
+        let p = onMatchDay(clock)
+        let cessation = rescheduledCessationEnabled ? rescheduledCessation
+                                                    : EqualOversCalculator.originalCessation(start: gameStartTime, rules: rules)
+        let q = TU.addMin(cessation, rules.extraTimeMinutes)
+        var r = TU.minBetween(p, q)
+        if competition.isInternational {
+            r = max(0, r - rules.adjustedInterval(timeLost: max(0, TU.minBetween(gameStartTime, p) - firstInningsPlayed(before: p))))
+        }
+        let raw = Double(r) / rules.minutesPerOver
+        let roundUp = !(competition.isT20 && !competition.isInternational)
+        let s = roundUp ? ceil(raw - 1e-9) : TU.round2(raw)
+        let second = min(rules.maxOversPerTeam, Int(floor(s + 1e-9)))
+        return TerminationCheck(cutOff: q, minutes: r, potentialOvers: s, oversFaced: oversFaced, secondInningsOvers: second)
+    }
+
+    /// The check at the last recorded restart, when overs faced were entered.
+    var recordedTermination: TerminationCheck? {
+        guard matchPhase != .second, let t = firstInningsOversFaced, let last = firstInningsDelays.map(\.end).max() else { return nil }
+        return terminationCheck(restartingAt: last, oversFaced: t)
+    }
+
     /// True when the recorded 1st innings has already used all the playing time its revised length allows,
     /// i.e. the innings has reached its end (termination: Appendix J 1.2).
     var firstInningsTimeUsedUp: Bool {
@@ -284,6 +322,12 @@ extension MatchState {
         openStoppageStart = nil
         secondInningsStarted = true
         matchPhase = .second
+    }
+
+    /// Overs to offer for the 2nd innings: S if the 1st innings was terminated, else the 1st innings allocation.
+    var secondInningsDefaultOvers: Int {
+        if let t = recordedTermination, t.terminated { return t.secondInningsOvers }
+        return firstInningsPlan.oversPerTeam
     }
 
     /// Overs for a 2nd innings whose first ball is at `clock` (late start reduces overs; early start does not).
@@ -360,5 +404,12 @@ extension MatchState {
         let all = matchPhase == .second && secondInningsStarted
             ? secondInningsInterruptionWarnings() : firstInningsWarnings()
         return all.filter { $0.severity == .error }
+    }
+}
+
+extension TU {
+    /// Overs as a whole number, or to 2 decimals where the sheet keeps a fraction (e.g. 10.67).
+    static func fmtOvers(_ v: Double) -> String {
+        abs(v - v.rounded()) < 0.005 ? "\(Int(v.rounded()))" : String(format: "%.2f", v)
     }
 }

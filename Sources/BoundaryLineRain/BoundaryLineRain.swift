@@ -677,6 +677,7 @@ struct Snapshot: Identifiable, Codable {
     var savedPhase: String?
     var savedOpenStoppage: Date?
     var savedSecondStarted: Bool?
+    var savedOversFaced: Int?
 }
 
 // MARK: - Persistence
@@ -756,6 +757,13 @@ final class MatchState: ObservableObject {
         didSet {
             if let openStoppageStart { Store.saveDate(openStoppageStart, key: "blOpenStoppage") }
             else { Store.defaults.removeObject(forKey: "blOpenStoppage") }
+        }
+    }
+    /// Complete overs faced by the side batting first at the last 1st-innings stoppage (T), if entered.
+    @Published var firstInningsOversFaced: Int? = nil {
+        didSet {
+            if let firstInningsOversFaced { Store.saveInt(firstInningsOversFaced, key: "blOversFaced") }
+            else { Store.defaults.removeObject(forKey: "blOversFaced") }
         }
     }
     /// True once the first ball of the second innings has been recorded in the match-day flow.
@@ -957,6 +965,7 @@ final class MatchState: ObservableObject {
         matchPhase = MatchPhase(rawValue: Store.loadString(key: "blMatchPhase", default: "Before play")) ?? .before
         openStoppageStart = Store.loadDate(key: "blOpenStoppage")
         secondInningsStarted = Store.loadBool(key: "blSecondStarted")
+        firstInningsOversFaced = Store.defaults.object(forKey: "blOversFaced") == nil ? nil : Store.loadInt(key: "blOversFaced", default: 0)
         let compRaw = Store.loadString(key: "competition", default: "ODC")
         competition = Competition(rawValue: compRaw) ?? .odc
         agreedExtraTime = Store.loadInt(key: "agreedExtraTime", default: 0)
@@ -1048,6 +1057,7 @@ final class MatchState: ObservableObject {
         matchPhase = .before
         openStoppageStart = nil
         secondInningsStarted = false
+        firstInningsOversFaced = nil
         Haptic.medium()
     }
     
@@ -1146,7 +1156,8 @@ final class MatchState: ObservableObject {
             savedAgreedExtraTime: competition.isInternational ? agreedExtraTime : nil,
             savedPhase: matchPhase.rawValue,
             savedOpenStoppage: openStoppageStart,
-            savedSecondStarted: secondInningsStarted
+            savedSecondStarted: secondInningsStarted,
+            savedOversFaced: firstInningsOversFaced
         )
         return s
     }
@@ -1259,6 +1270,7 @@ final class MatchState: ObservableObject {
         // Older snapshots have no flow state: infer a sensible stage from the records.
         secondInningsStarted = s.savedSecondStarted ?? !restoredSecond.isEmpty
         openStoppageStart = s.savedOpenStoppage
+        firstInningsOversFaced = s.savedOversFaced
         matchPhase = s.savedPhase.flatMap(MatchPhase.init(rawValue:))
             ?? (secondInningsStarted ? .second : (restoredFirst.isEmpty ? .before : .first))
         matchIsActive = true

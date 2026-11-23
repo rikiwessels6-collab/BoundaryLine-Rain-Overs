@@ -2,4 +2,3 @@
 *.xcodeproj
 build.log
 DerivedData/
-*.pdf

@@ -3545,7 +3545,7 @@ struct MatchContextSheet: View {
                 } header: {
                     Text("Teams")
                 } footer: {
-                    Text(ms.competition.isInternational ? "ICC full-member teams." : "2025-26 \(ms.competition.fullName) teams.")
+                    Text(ms.competition.isInternational ? "ICC full-member teams." : "\(ms.competition.fullName) teams.")
                 }
                 
                 // Venue selection
@@ -3578,7 +3578,7 @@ struct MatchContextSheet: View {
                 } header: {
                     Text("Venue")
                 } footer: {
-                    Text(ms.competition.isInternational ? "Major Australian international grounds." : "2025-26 season \(ms.competition.rawValue) grounds.")
+                    Text(ms.competition.isInternational ? "Major Australian international grounds." : "Usual \(ms.competition.rawValue) grounds: check against the fixture.")
                 }
                 
                 // ICC agreed extra time
@@ -4112,9 +4112,9 @@ struct AboutSheet: View {
                         Text("BoundaryLine Rain & Overs")
                             .font(.title3.weight(.semibold))
                         Text("by BoundaryLine Apps").foregroundStyle(.secondary)
-                        Text("v6.6 — WBBL12 conditions").font(.caption).foregroundStyle(.secondary)
-                        // PROPOSED: on-device self-tests (no Xcode/XCTest needed). Set
-                        // BLDiagnostics.enabled = false in BoundaryLineSelfTests.swift before App Store upload.
+                        Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · 2026–27 Playing Conditions")
+                            .font(.caption).foregroundStyle(.secondary)
+                        // Self-tests: shown in Debug and TestFlight builds only (BLDiagnostics).
                         if BLDiagnostics.enabled {
                             Button { showSelfTests = true } label: {
                                 Label("Run self-tests", systemImage: "checkmark.seal")

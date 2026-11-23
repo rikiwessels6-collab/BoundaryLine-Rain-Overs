@@ -12,7 +12,10 @@ targets:
   BoundaryLineRain:
     type: application
     platform: iOS
-    sources: [Sources/BoundaryLineRain]
+    sources:
+      - path: Sources/BoundaryLineRain
+      - path: Resources/PlayingConditions
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boundarylineapps.gwl   # App Store Connect: BoundaryLine GWL, Apple ID 6763422575

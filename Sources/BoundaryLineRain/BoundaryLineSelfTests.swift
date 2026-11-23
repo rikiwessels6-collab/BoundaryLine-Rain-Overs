@@ -12,12 +12,20 @@
 //   * an independent Python re-implementation (verification/*.py) of the same rules.
 // BBL checks follow the BBL|16 Playing Conditions dated 1 December 2026 (verification/bbl_expectations.py).
 //
-// BEFORE APP STORE UPLOAD: set BLDiagnostics.enabled = false (hides the About button).
+// The About button is shown only in Debug and TestFlight builds (see BLDiagnostics).
 
 import SwiftUI
 
 enum BLDiagnostics {
-    static let enabled = true      // <-- set to false before uploading to App Store Connect
+    /// The About screen's "Run self-tests" button shows in Debug builds and TestFlight builds only.
+    /// App Store copies never show it (their receipt is not a sandbox receipt).
+    static var enabled: Bool {
+        #if DEBUG
+        return true
+        #else
+        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        #endif
+    }
 }
 
 struct SelfTestResult: Identifiable {
@@ -70,6 +78,7 @@ enum BoundaryLineSelfTests {
         firstInnings(r)
         secondInnings(r)
         bbl(r)
+        bundledPDFs(r)
         flow(r)
         deviceScript(r)
         icc(r)                                   // before persistence: that group deliberately corrupts stored data
@@ -280,6 +289,16 @@ enum BoundaryLineSelfTests {
         let got = [p.oversPerTeam, TU.minBetween(p.firstCessation, p.secondStart), mins(p.firstCessation),
                    mins(p.secondStart), mins(p.secondCessation), w.revisedOvers, mins(w.revisedCessation)]
         r.equal("Script \(name)" + (errors.isEmpty ? "" : " (rejected: \(errors.joined(separator: "; ")))"), got, expect)
+    }
+
+    // MARK: 10. Playing Conditions PDFs are bundled for every competition
+    private static func bundledPDFs(_ r: Recorder) {
+        let missing = Competition.allCases.compactMap { c -> String? in
+            guard let name = CompRules.rules(for: c).pdfFileName else { return "\(c.rawValue): no file name" }
+            let base = (name as NSString).deletingPathExtension
+            return Bundle.main.url(forResource: base, withExtension: "pdf") == nil ? name : nil
+        }
+        r.check("Playing Conditions PDF bundled for all six competitions", missing.isEmpty, missing.joined(separator: ", "))
     }
 
     // MARK: 8. Match-day flow (one-tap first ball / play stopped / play resumed)

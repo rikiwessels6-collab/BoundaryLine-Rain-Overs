@@ -380,7 +380,11 @@ struct StoppageControl: View {
                 OptionalTimeRow(label: "Restart at", time: $restartAtValue)
                 if ms.matchPhase != .second {
                     HStack {
-                        Text("Overs faced (complete)").font(.body.weight(.semibold)).foregroundStyle(Board.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Complete overs faced").font(.body.weight(.semibold)).foregroundStyle(Board.text)
+                            Text("For the termination check. Ignore balls of an unfinished over: 12.3 → 12.")
+                                .font(.caption).foregroundStyle(Board.dim)
+                        }
                         Spacer()
                         if let o = oversFaced {
                             Stepper("\(o)", value: Binding(get: { o }, set: { oversFaced = $0 }), in: 0...ms.rules.maxOversPerTeam)
@@ -639,7 +643,7 @@ struct StoppageEditSheet: View {
                 if !second {
                     Section("Termination check") {
                         if let t = ms.firstInningsOversFaced {
-                            Stepper("Overs faced (complete): \(t)",
+                            Stepper("Complete overs faced: \(t)",
                                     value: Binding(get: { t }, set: { ms.firstInningsOversFaced = $0 }), in: 0...ms.rules.maxOversPerTeam)
                             let c = ms.terminationCheck(restartingAt: end, oversFaced: t)
                             Text(c.terminated ? "Terminated: \(TU.fmtOvers(c.potentialOvers)) overs possible ≤ \(t) faced. 2nd innings \(c.secondInningsOvers) overs."
@@ -647,7 +651,7 @@ struct StoppageEditSheet: View {
                                 .foregroundStyle(c.terminated ? .red : .secondary)
                             Button("Remove overs faced") { ms.firstInningsOversFaced = nil }
                         } else {
-                            Button("Add overs faced at this stoppage") { ms.firstInningsOversFaced = 0 }
+                            Button("Add complete overs faced (12.3 → 12)") { ms.firstInningsOversFaced = 0 }
                         }
                     }
                 }

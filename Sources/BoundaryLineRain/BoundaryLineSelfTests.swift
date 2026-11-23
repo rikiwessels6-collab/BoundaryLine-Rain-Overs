@@ -387,6 +387,20 @@ enum BoundaryLineSelfTests {
         _ = ls.recordStoppage(from: day(15, 20), to: day(15, 40))
         r.check("Flow: first ball can't be moved past a recorded stoppage", !ls.correctFirstBall(to: day(15, 30)))
 
+        // Rain in the interval: WBBL, 2nd innings due 9:10pm, first ball 9:40pm -> 30 min lost,
+        // floor(30 / 3.75) = 8 overs off -> 12 overs, ending 10:25pm (cl. 13.7.2.2.1; audit finding C2).
+        let iv = MatchState(); iv.startMatch(.wbbl)
+        iv.gameStartTime = day(19, 40); iv.recordFirstBall(at: day(19, 40))
+        iv.beginSecondInnings(at: day(21, 40), overs: iv.firstInningsPlan.oversPerTeam)
+        let ivw = iv.secondInningsLive
+        r.equal("Flow: 2nd innings starting 30 min late loses 8 overs -> 12, ends 10:25pm",
+                [iv.firstInningsPlan.secondStart == day(21, 10) ? 1 : 0, ivw.revisedOvers, TU.minBetween(day(0), ivw.revisedCessation)],
+                [1, 12, 22 * 60 + 25])
+        r.equal("... first ball shown as 9:40pm; preview before recording agreed",
+                [iv.secondInningsFirstBall == day(21, 40) ? 1 : 0, iv.secondInningsStartPreview(at: day(21, 40), overs: 20).revisedOvers], [1, 12])
+        r.check("Bowler text: one maximum per bowler (WNCL 28.7.4: 17 overs -> 4)",
+                CompRules.wncl.bowlingRestrictionText(for: 17) == "Max 4 overs per bowler", CompRules.wncl.bowlingRestrictionText(for: 17))
+
         ms.saveCurrentMatch()
         ms.matchPhase = .before
         if let saved = ms.snapshots.first(where: { $0.id == ms.currentSavedMatchID }) {

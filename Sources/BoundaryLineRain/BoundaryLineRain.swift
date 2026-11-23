@@ -385,9 +385,8 @@ struct CompRules {
     func bowlingRestrictionText(for overs: Int) -> String {
         let c = min(max(overs, 1), maxOversPerTeam)
         if let cap = shortInningsBowlerCap, c < 10 { return "No bowler may bowl more than \(cap) ov (innings of 5-9 ov)" }
-        let base = c / 5; let rem = c % 5
-        if rem == 0 { return "5 bowlers: up to \(base) ov each" }
-        return "\(rem) bowl up to \(base + 1) ov, \(5 - rem) bowl up to \(base) ov"
+        // cl. 13.8.2-13.8.3: one maximum per bowler, one-fifth rounded up (CA WNCL 28.7.4 table: 17 overs -> 4).
+        return "Max \(maxOversPerBowler(teamOvers: c)) overs per bowler"
     }
     
     // Powerplay tables

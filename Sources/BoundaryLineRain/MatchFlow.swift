@@ -115,8 +115,8 @@ extension MatchState {
             D3_restartTime = time
         default:
             let played = max(0, TU.minBetween(LS_actualStart, start) - C_playingTimeLost)
-            guard played <= A_netPlayingTime / 2 else {
-                return "More than half the playing time had been used before this stoppage. Check the times."
+            guard played <= A_netPlayingTime else {
+                return "More than the whole match's playing time had been used before this stoppage. Check the times."
             }
             undoFirstInningsDelays = firstInningsDelays
             firstInningsDelays.append(InningsDelay(start: start, end: time, allowanceMinutes: 0))
@@ -267,13 +267,47 @@ extension MatchState {
         C2_startTime = time
         B3_startOfInterruption = time
         D3_restartTime = time
-        F3_additionalTimeAvail = TU.minBetween(time, scheduled)
-        secondInningsDelays = []
+        if time > scheduled {
+            // Started late (e.g. rain in the interval): lost playing time for the side batting
+            // second (cl. 13.7.2.2.1). Recorded as a delayed start from the scheduled time.
+            A3_startOfInnings = scheduled
+            C2_startTime = scheduled
+            B3_startOfInterruption = scheduled
+            F3_additionalTimeAvail = 0
+            secondInningsDelays = [InningsDelay(start: scheduled, end: time, allowanceMinutes: 0)]
+        } else {
+            F3_additionalTimeAvail = TU.minBetween(time, scheduled)
+            secondInningsDelays = []
+        }
         secondInningsCompletedOvers = 0
         secondInningsCompletedBalls = 0
         openStoppageStart = nil
         secondInningsStarted = true
         matchPhase = .second
+    }
+
+    /// Overs for a 2nd innings whose first ball is at `clock` (late start reduces overs; early start does not).
+    func secondInningsStartPreview(at clock: Date, overs: Int) -> SecondInningsWorksheet {
+        let time = onMatchDay(clock)
+        let scheduled = firstInningsPlan.secondStart
+        let late = time > scheduled
+        return SecondInningsWorksheet.calculate(
+            rules: rules, inningsStart: late ? scheduled : time, restart: time, initialOvers: overs,
+            delays: late ? [InningsDelay(start: scheduled, end: time, allowanceMinutes: 0)] : [],
+            completedOvers: 0, completedBalls: 0,
+            extraTimeAlreadyUsed: firstInningsLoss.extraApplied, earlyStartCredit: 0)
+    }
+
+    /// When the 2nd innings actually started (after any delayed start).
+    var secondInningsFirstBall: Date {
+        if let d = secondInningsDelays.first, d.start == A3_startOfInnings { return d.end }
+        return A3_startOfInnings
+    }
+
+    /// True when the recorded first ball is after the latest permissible start (BBL/WBBL).
+    var firstBallAfterLatestStart: Bool {
+        guard let latest = latestPermissibleStart else { return false }
+        return LS_actualStart > latest
     }
 
     private func secondWorksheet(with delays: [InningsDelay]) -> SecondInningsWorksheet {

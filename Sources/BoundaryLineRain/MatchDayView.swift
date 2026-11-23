@@ -489,7 +489,8 @@ struct StoppageListSection: View {
                 }
                 ForEach(delays) { d in
                     Button { editing = d } label: {
-                        row(label: "Stoppage", from: d.start, to: d.end, editable: true)
+                        row(label: second && d.start == ms.A3_startOfInnings ? "Delayed start" : "Stoppage",
+                            from: d.start, to: d.end, editable: true)
                     }
                     .buttonStyle(.plain)
                 }
@@ -639,6 +640,9 @@ struct FirstInningsPanel: View {
     var body: some View {
         VStack(spacing: 14) {
             BlockingBanner(warnings: ms.blockingWarnings)
+            if ms.firstBallAfterLatestStart, let latest = ms.latestPermissibleStart {
+                BlockingBanner(warnings: [ValidationWarning(message: "First ball is after the latest permissible start (\(TU.shortTime(latest))): a 5-over match is not possible (CA almanac 2026/27 p.47–48).", severity: .error)])
+            }
             if ms.firstInningsTimeUsedUp {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("END OF 1ST INNINGS: TERMINATION", systemImage: "flag.slash.fill")
@@ -690,17 +694,22 @@ struct SecondInningsPanel: View {
 
     private var setup: some View {
         let plan = ms.firstInningsPlan
-        let early = TU.minBetween(firstBall, plan.secondStart)
+        let early = TU.minBetween(ms.onMatchDay(firstBall), plan.secondStart)
+        let late = TU.minBetween(plan.secondStart, ms.onMatchDay(firstBall))
+        let preview = ms.secondInningsStartPreview(at: firstBall, overs: overs)
         return VStack(spacing: 14) {
-            AnswerBoard(caption: "2nd innings", headline: "\(overs)", headlineUnit: "overs",
+            AnswerBoard(caption: "2nd innings", headline: "\(preview.revisedOvers)", headlineUnit: "overs",
                         rows: [("Scheduled start", TU.shortTime(plan.secondStart)),
-                               ("Innings length", "\(TU.ceilMin(Double(overs) * ms.rules.minutesPerOver)) min")],
-                        note: early > 0 ? "Starting \(early) min early: that time is credited if play is lost later." : nil)
+                               ("First ball", TU.shortTime(ms.onMatchDay(firstBall))),
+                               ("Innings ends", TU.shortTime(preview.revisedCessation)),
+                               ("Overs lost", "\(preview.oversLost)")],
+                        note: early > 0 ? "Starting \(early) min early: that time is credited if play is lost later."
+                            : (late > 0 ? "Starting \(late) min late: lost playing time (cl. 13.7.2.2.1)." : nil))
             BoardSection(title: "Set up") {
                 Stepper(value: $overs, in: 1...ms.rules.maxOversPerTeam) {
                     Text("Overs: \(overs)").font(.body.weight(.semibold)).foregroundStyle(Board.text)
                 }
-                Text("Normally the 1st innings allocation (\(plan.oversPerTeam)). Change it only if the 1st innings was terminated.")
+                Text("The 1st innings allocation (\(plan.oversPerTeam)) before any late start. Change it only if the 1st innings was terminated.")
                     .font(.footnote).foregroundStyle(Board.dim)
                 BoardTimeRow(label: "First ball", time: $firstBall)
             }
@@ -729,7 +738,7 @@ struct SecondInningsPanel: View {
                 headline: "\(w.revisedOvers)", headlineUnit: "overs",
                 rows: [("Innings ends", TU.shortTime(w.revisedCessation)),
                        ("Overs lost", "\(w.oversLost)"),
-                       ("Started", TU.shortTime(ms.A3_startOfInnings)),
+                       ("First ball", TU.shortTime(ms.secondInningsFirstBall)),
                        ("Time lost", "\(w.interruptionMinutes) min")],
                 note: w.allowanceMinutes > 0 ? "\(w.allowanceMinutes) min credited (extra time / early start) before overs were lost." : nil)
             if w.exceedsCompletedOvers {

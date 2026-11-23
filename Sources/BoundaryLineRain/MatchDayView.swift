@@ -322,7 +322,6 @@ struct BeforePlayPanel: View {
 
 struct StoppageControl: View {
     @EnvironmentObject var ms: MatchState
-    @State private var oversFaced: Int? = nil
     @State private var stoppedAtValue: Date? = nil
     @State private var restartAtValue: Date? = nil
     @State private var message: String?
@@ -351,7 +350,6 @@ struct StoppageControl: View {
                                 color: Board.rain, foreground: Board.bg) {
                     stoppedAtValue = nil
                     restartAtValue = nil
-                    oversFaced = nil
                     message = nil; recorded = false
                     withAnimation { open = true }
                 }
@@ -378,25 +376,6 @@ struct StoppageControl: View {
             BoardSection(title: "Rain stoppage") {
                 OptionalTimeRow(label: "Play stopped at", time: $stoppedAtValue)
                 OptionalTimeRow(label: "Restart at", time: $restartAtValue)
-                if ms.matchPhase != .second {
-                    HStack {
-                        Text("Overs faced (complete)").font(.body.weight(.semibold)).foregroundStyle(Board.text)
-                        Spacer()
-                        if let o = oversFaced {
-                            Stepper("\(o)", value: Binding(get: { o }, set: { oversFaced = $0 }), in: 0...ms.rules.maxOversPerTeam)
-                                .fixedSize().foregroundStyle(Board.text)
-                            Button { oversFaced = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Board.dim) }
-                                .buttonStyle(.plain)
-                        } else {
-                            Button { oversFaced = 0 } label: {
-                                Text("Add").font(.body.weight(.semibold))
-                                    .padding(.horizontal, 14).padding(.vertical, 8)
-                                    .foregroundStyle(Board.gold)
-                                    .overlay(Capsule().stroke(Board.gold.opacity(0.6)))
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                }
                 if let s = stoppedAtValue, let r = restart {
                     HStack {
                         Text("Time off").foregroundStyle(Board.dim)
@@ -417,7 +396,6 @@ struct StoppageControl: View {
                     message = "Add both times first."; Haptic.warning(); return
                 }
                 message = ms.recordStoppage(from: s, to: r)
-                if message == nil, ms.matchPhase != .second { ms.firstInningsOversFaced = oversFaced }
                 if message == nil {
                     Haptic.success(); recorded = true
                     withAnimation { open = false }
@@ -449,19 +427,8 @@ struct StoppageControl: View {
                     .foregroundStyle(Board.gold)
                 Text("1st innings ends \(TU.shortTime(p.firstCessation)) · break \(TU.minBetween(p.firstCessation, p.secondStart)) min · match ends \(TU.shortTime(p.secondCessation))")
                     .font(.headline).foregroundStyle(Board.text)
-                if let t = oversFaced {
-                    let c = ms.terminationCheck(restartingAt: restart, oversFaced: t,
-                        totalLost: max(0, TU.minBetween(ms.gameStartTime, ms.LS_actualStart)) + ms.C_playingTimeLost + TU.minBetween(ms.onMatchDay(stoppedAt), restart))
-                    if c.terminated {
-                        Label("1st innings TERMINATED: only \(TU.fmtOvers(c.potentialOvers)) overs possible after the restart, \(t) already faced. 2nd innings: \(c.secondInningsOvers) overs.",
-                              systemImage: "flag.slash.fill")
-                            .font(.callout.weight(.bold)).foregroundStyle(Board.stop)
-                    } else {
-                        Text("Termination check: \(TU.fmtOvers(c.potentialOvers)) overs possible after the restart > \(t) faced, so the innings continues.")
-                            .font(.footnote).foregroundStyle(Board.dim)
-                    }
-                } else if ms.firstInningsPlayed(before: stoppedAt) >= p.inningsMinutes {
-                    Label("Long innings already: add Overs faced to check for termination.",
+                if ms.firstInningsPlayed(before: stoppedAt) >= p.inningsMinutes {
+                    Label("Long innings already: check whether it is terminated (Show working → Termination).",
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.callout.weight(.semibold)).foregroundStyle(Board.stop)
                 }
@@ -636,21 +603,6 @@ struct StoppageEditSheet: View {
                 if failed {
                     Text("Those times overlap another stoppage or run backwards.").foregroundStyle(.red)
                 }
-                if !second {
-                    Section("Termination check") {
-                        if let t = ms.firstInningsOversFaced {
-                            Stepper("Overs faced (complete): \(t)",
-                                    value: Binding(get: { t }, set: { ms.firstInningsOversFaced = $0 }), in: 0...ms.rules.maxOversPerTeam)
-                            let c = ms.terminationCheck(restartingAt: end, oversFaced: t)
-                            Text(c.terminated ? "Terminated: \(TU.fmtOvers(c.potentialOvers)) overs possible ≤ \(t) faced. 2nd innings \(c.secondInningsOvers) overs."
-                                              : "Continues: \(TU.fmtOvers(c.potentialOvers)) overs possible > \(t) faced.")
-                                .foregroundStyle(c.terminated ? .red : .secondary)
-                            Button("Remove overs faced") { ms.firstInningsOversFaced = nil }
-                        } else {
-                            Button("Add overs faced at this stoppage") { ms.firstInningsOversFaced = 0 }
-                        }
-                    }
-                }
                 Section {
                     Button("Delete this stoppage", role: .destructive) {
                         if second { ms.secondInningsDelays.removeAll { $0.id == delay.id } }
@@ -708,7 +660,7 @@ struct FirstInningsPanel: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("CHECK FOR TERMINATION", systemImage: "exclamationmark.triangle.fill")
                         .font(.headline.weight(.heavy))
-                    Text("The 1st innings had \(ms.B_timeInProgress) min of play before the last stoppage, more than the \(plan.inningsMinutes) min a \(plan.oversPerTeam)-over innings lasts. Tap the stoppage below and add the overs faced to check.")
+                    Text("The 1st innings had \(ms.B_timeInProgress) min of play before the last stoppage, more than the \(plan.inningsMinutes) min a \(plan.oversPerTeam)-over innings lasts. Check whether it is terminated: Show working → Termination.")
                         .font(.callout)
                 }
                 .foregroundStyle(.white)
